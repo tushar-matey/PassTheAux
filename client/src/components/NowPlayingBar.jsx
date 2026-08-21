@@ -45,63 +45,82 @@ const NowPlayingBar = () => {
   const [volume, setVolume] = useState(80);
   const [isMuted, setIsMuted] = useState(false);
   const [needsInteraction, setNeedsInteraction] = useState(false);
+  // Bug #2 fix: local progress state used for the seek bar display.
+  // For the host it is polled from the YT player every 500ms.
+  // For non-hosts it is synced from the context's socket-driven playbackProgress.
+  const [localProgress, setLocalProgress] = useState(0);
 
   const playerRef = useRef(null);
   const containerRef = useRef(null);
   const syncIntervalRef = useRef(null);
+  const progressPollRef = useRef(null);
   const isHostRef = useRef(isHost);
   const currentTrackRef = useRef(currentTrack);
+  // Refs for volume/mute so onPlayerReady closure always sees the latest values
+  const volumeRef = useRef(volume);
+  const isMutedRef = useRef(isMuted);
 
   isHostRef.current = isHost;
   currentTrackRef.current = currentTrack;
+  volumeRef.current = volume;
+  isMutedRef.current = isMuted;
 
-  // Initialize or update YouTube Player
+  // Non-host: keep localProgress in sync with socket-driven playbackProgress from context
   useEffect(() => {
-    const videoId = currentTrack?.youtubeVideoId;
-    if (!videoId) {
-      if (playerRef.current) {
-        try {
-          playerRef.current.stopVideo();
-        } catch (e) {}
-      }
+    if (!isHost) {
+      setLocalProgress(playbackProgress);
+    }
+  }, [isHost, playbackProgress]);
+
+  // Host: Poll the YouTube IFrame player every 500ms for accurate, drift-free progress (Bug #2 fix)
+  useEffect(() => {
+    if (!isHost || !currentTrack?.youtubeVideoId) {
+      if (progressPollRef.current) clearInterval(progressPollRef.current);
       return;
     }
 
-    const onPlayerReady = (event) => {
-      console.log('✅ [YouTube Player] Ready for video:', videoId);
-      setPlayerReady(true);
-      event.target.setVolume(isMuted ? 0 : volume);
-
-      if (currentTrackRef.current?.isPlaying) {
-        const startSec = currentTrackRef.current?.progressSec || 0;
-        if (startSec > 0) {
-          event.target.seekTo(startSec, true);
-        }
-        event.target.playVideo();
+    progressPollRef.current = setInterval(() => {
+      if (playerRef.current && typeof playerRef.current.getCurrentTime === 'function') {
+        try {
+          const t = playerRef.current.getCurrentTime();
+          if (typeof t === 'number' && !isNaN(t)) {
+            setLocalProgress(t);
+          }
+        } catch (e) {}
       }
-    };
+    }, 500);
 
-    const onPlayerStateChange = (event) => {
-      // YT.PlayerState: -1 (UNSTARTED), 0 (ENDED), 1 (PLAYING), 2 (PAUSED), 3 (BUFFERING), 5 (CUED)
-      if (event.data === 0) {
-        // Track ended
-        console.log('[YouTube Player] Track ended. Notifying host advance...');
-        if (isHostRef.current) {
-          notifyTrackEnded(currentTrackRef.current?.youtubeVideoId);
-        }
-      }
+    return () => {
+      if (progressPollRef.current) clearInterval(progressPollRef.current);
     };
+  }, [isHost, currentTrack?.youtubeVideoId]);
 
-    const onError = (event) => {
-      console.warn('[YouTube Player] Error event:', event.data);
-      // If video is unavailable/embed restricted, host can advance
-      if (isHostRef.current && (event.data === 101 || event.data === 150 || event.data === 100)) {
-        console.warn('[YouTube Player] Video restricted from embedding. Auto-skipping...');
-        setTimeout(() => {
-          skipTrack();
-        }, 2000);
+  // Initialize YouTube Player — always DESTROY and RECREATE on track change (Bugs #4 & #5 fix).
+  //
+  // Why recreate instead of calling loadVideoById()?
+  //   loadVideoById() does NOT re-bind event handlers. The onPlayerStateChange
+  //   callback stays bound to the original player creation context, so track-ended
+  //   notifications and playback triggers become stale. More critically, calling
+  //   playVideo() right after loadVideoById() is a race — the video hasn't buffered
+  //   yet and the call silently fails.
+  //
+  // By recreating we get:
+  //   1. Fresh event handlers bound to the current track refs
+  //   2. The CUED (state=5) event to safely trigger playVideo() after buffering
+  useEffect(() => {
+    const videoId = currentTrack?.youtubeVideoId;
+
+    if (!videoId) {
+      // No active track — destroy player if it exists
+      if (playerRef.current) {
+        try {
+          playerRef.current.destroy();
+        } catch (e) {}
+        playerRef.current = null;
       }
-    };
+      setLocalProgress(0);
+      return;
+    }
 
     const createPlayer = () => {
       if (!window.YT || !window.YT.Player) {
@@ -109,26 +128,72 @@ const NowPlayingBar = () => {
         return;
       }
 
+      // Destroy existing player first to ensure fresh event handler bindings
       if (playerRef.current) {
         try {
-          // If player already exists, simply load new video
-          playerRef.current.loadVideoById({
-            videoId,
-            startSeconds: currentTrackRef.current?.progressSec || 0
-          });
-          if (currentTrackRef.current?.isPlaying) {
-            playerRef.current.playVideo();
-          } else {
-            playerRef.current.pauseVideo();
-          }
-          return;
+          playerRef.current.destroy();
         } catch (e) {
-          console.warn('[YouTube Player] Recreating player:', e.message);
+          console.warn('[YouTube Player] Error destroying previous player:', e.message);
         }
+        playerRef.current = null;
       }
 
-      // Create new YT.Player instance
+      setPlayerReady(false);
+
+      const onPlayerReady = (event) => {
+        console.log('✅ [YouTube Player] Ready for video:', videoId);
+        setPlayerReady(true);
+        event.target.setVolume(isMutedRef.current ? 0 : volumeRef.current);
+
+        const startSec = currentTrackRef.current?.progressSec || 0;
+        if (startSec > 0) {
+          event.target.seekTo(startSec, true);
+        }
+
+        // Only call playVideo() if the track should be playing.
+        // For autoplay=1 this may already be in-progress, but calling it here
+        // ensures it plays even if autoplay was blocked by the browser.
+        if (currentTrackRef.current?.isPlaying) {
+          event.target.playVideo();
+        }
+      };
+
+      const onPlayerStateChange = (event) => {
+        // YT.PlayerState values: -1 (UNSTARTED), 0 (ENDED), 1 (PLAYING),
+        //                         2 (PAUSED), 3 (BUFFERING), 5 (CUED)
+        const YT = window.YT;
+
+        if (event.data === 0) {
+          // Track finished — notify host so queue can advance
+          console.log('[YouTube Player] Track ended. Notifying host advance...');
+          if (isHostRef.current) {
+            notifyTrackEnded(currentTrackRef.current?.youtubeVideoId);
+          }
+        } else if (event.data === YT.PlayerState.CUED) {
+          // Bug #5 fix: Video is now fully cued and buffered — SAFE to call playVideo().
+          // This is the correct place to trigger playback after a track change,
+          // eliminating the race condition from calling playVideo() immediately after
+          // loadVideoById() (which was the root cause of the silent no-play bug).
+          if (currentTrackRef.current?.isPlaying) {
+            console.log('[YouTube Player] Video CUED — starting playback for:', videoId);
+            event.target.playVideo();
+          }
+        }
+      };
+
+      const onError = (event) => {
+        console.warn('[YouTube Player] Error event:', event.data);
+        // If video is unavailable/embed restricted, host can advance
+        if (isHostRef.current && (event.data === 101 || event.data === 150 || event.data === 100)) {
+          console.warn('[YouTube Player] Video restricted from embedding. Auto-skipping...');
+          setTimeout(() => {
+            skipTrack();
+          }, 2000);
+        }
+      };
+
       try {
+        console.log('[YouTube Player] Creating new player for video:', videoId);
         playerRef.current = new window.YT.Player('youtube-iframe-target', {
           height: '100%',
           width: '100%',
@@ -160,6 +225,9 @@ const NowPlayingBar = () => {
         createPlayer();
       };
     }
+
+    // Note: no cleanup destroy here — the NEXT run of this effect will handle it
+    // to avoid a race where the div is unmounted before the new player is attached
   }, [currentTrack?.youtubeVideoId, notifyTrackEnded, skipTrack]);
 
   // Host Periodic Sync Broadcast
@@ -238,7 +306,7 @@ const NowPlayingBar = () => {
   // Handle Play/Pause Toggle
   const handleToggle = () => {
     if (!isHost) {
-      // If listener, let them start local playback if autoplay was suspended
+      // Non-host: allow local play/resume if autoplay was suspended by browser
       if (playerRef.current) {
         try {
           const state = playerRef.current.getPlayerState();
@@ -267,6 +335,8 @@ const NowPlayingBar = () => {
   };
 
   // Handle Host Seeking on Progress Bar
+  // Bug #3 fix: immediately update localProgress so the bar jumps visually
+  // instead of waiting for the next 500ms poll tick.
   const handleSeek = (e) => {
     if (!isHost || !currentTrack?.durationSec) return;
     const rect = e.currentTarget.getBoundingClientRect();
@@ -277,6 +347,7 @@ const NowPlayingBar = () => {
     if (playerRef.current && typeof playerRef.current.seekTo === 'function') {
       playerRef.current.seekTo(targetSec, true);
     }
+    setLocalProgress(targetSec); // Immediate visual feedback (Bug #3 fix)
     broadcastSeek(targetSec);
   };
 
@@ -305,8 +376,10 @@ const NowPlayingBar = () => {
   };
 
   const durationSec = currentTrack?.durationSec || 0;
+  // Bug #2 fix: use localProgress for the seek bar — accurate for host (polled from YT
+  // player) and up-to-date for non-hosts (synced via socket events via useEffect above).
   const progressPercent =
-    durationSec > 0 ? Math.min(100, (playbackProgress / durationSec) * 100) : 0;
+    durationSec > 0 ? Math.min(100, (localProgress / durationSec) * 100) : 0;
 
   if (!currentTrack || !currentTrack.title) {
     return (
@@ -444,7 +517,7 @@ const NowPlayingBar = () => {
             {/* Interactive Progress Bar (Host can click to seek) */}
             <div className="w-full flex items-center gap-3">
               <span className="text-[11px] font-mono text-slate-400 w-10 text-right">
-                {formatTime(playbackProgress)}
+                {formatTime(localProgress)}
               </span>
 
               <div

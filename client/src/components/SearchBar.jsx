@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { useRoom } from '../context/RoomContext';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 import {
   Search,
   X,
@@ -23,6 +24,7 @@ const formatDuration = (seconds) => {
 
 const SearchBar = () => {
   const { isAuthenticated } = useAuth();
+  const { toastError } = useToast();
   const {
     searchResults,
     searchLoading,
@@ -32,6 +34,16 @@ const SearchBar = () => {
     queue,
     currentTrack
   } = useRoom();
+
+  // Bug #1 fix: show a clear toast instead of silently failing when not logged in
+  const requireAuth = (action) => {
+    if (!isAuthenticated) {
+      toastError('Please log in to add or vote on songs.', 'Login Required');
+      return false;
+    }
+    action();
+    return true;
+  };
 
   const [inputVal, setInputVal] = useState('');
   const debounceTimerRef = useRef(null);
@@ -222,16 +234,19 @@ const SearchBar = () => {
                     {isInQueue ? (
                       <button
                         onClick={() =>
-                          toggleVote(inQueueTrack?._id || track.youtubeVideoId)
+                          requireAuth(() =>
+                            toggleVote(inQueueTrack?._id || track.youtubeVideoId)
+                          )
                         }
-                        disabled={!isAuthenticated}
                         className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl font-bold text-xs transition-all active:scale-95 ${
                           hasVoted
                             ? 'bg-rose-500 text-white shadow-lg shadow-rose-500/30'
                             : 'bg-white/10 hover:bg-white/20 text-white border border-white/10'
                         }`}
                         title={
-                          hasVoted
+                          !isAuthenticated
+                            ? 'Log in to vote'
+                            : hasVoted
                             ? 'Click to remove your vote'
                             : 'Click to upvote this queued track'
                         }
@@ -254,10 +269,9 @@ const SearchBar = () => {
                       </button>
                     ) : (
                       <button
-                        onClick={() => addToQueue(track)}
-                        disabled={!isAuthenticated}
+                        onClick={() => requireAuth(() => addToQueue(track))}
                         className="flex items-center gap-1 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-rose-500 to-red-600 hover:from-rose-400 hover:to-red-500 text-white font-bold text-xs shadow-md shadow-rose-500/20 hover:scale-105 active:scale-95 transition-all"
-                        title="Add track to shared queue"
+                        title={isAuthenticated ? 'Add track to shared queue' : 'Log in to add songs'}
                       >
                         <Plus className="w-3.5 h-3.5 stroke-[3]" />
                         <span>Add</span>

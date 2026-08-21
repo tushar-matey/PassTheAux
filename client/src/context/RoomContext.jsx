@@ -153,6 +153,19 @@ export const RoomProvider = ({ children }) => {
       setRemoteSyncEvent(syncData);
       if (typeof syncData.progressSec === 'number') {
         setPlaybackProgress(syncData.progressSec);
+        // Bug #2 fix (non-host): recalculate startedAt from the received progressSec so
+        // the interval-based progress timer in this context stays accurate between the
+        // 6-second sync windows, instead of freezing at the last synced value.
+        if (syncData.isPlaying) {
+          setCurrentTrack((prev) => {
+            if (!prev || !prev.youtubeVideoId) return prev;
+            return {
+              ...prev,
+              startedAt: new Date(Date.now() - syncData.progressSec * 1000),
+              isPlaying: true
+            };
+          });
+        }
       }
     };
 
