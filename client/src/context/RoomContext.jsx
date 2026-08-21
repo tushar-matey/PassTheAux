@@ -46,15 +46,35 @@ export const RoomProvider = ({ children }) => {
     (room.hostUserId?._id === user._id || room.hostUserId === user._id)
   );
 
-  // Progress timer for local UI bar
+  // Ref used by the progress timer to apply playback-sync corrections for
+  // non-host clients without triggering re-renders (Bug E fix).
+  const syncCorrectionRef = useRef(null);
+  // Ref that holds the latest currentTrack so the interval closure can read
+  // fresh values without re-creating the interval on every field change.
+  const currentTrackTimerRef = useRef(currentTrack);
+  // Guard ref: prevent rapid play/pause clicks from racing the server (Bug D fix).
+  const isTogglingPlayRef = useRef(false);
+
+  currentTrackTimerRef.current = currentTrack;
+
+  // Progress timer for local UI bar.
+  // Deps narrowed to youtubeVideoId + isPlaying so that startedAt corrections
+  // (written into syncCorrectionRef by handlePlaybackSync) don't restart the
+  // interval and cause unnecessary re-renders (Bug E fix).
   useEffect(() => {
     let interval = null;
 
     if (currentTrack && currentTrack.isPlaying && currentTrack.durationSec > 0) {
       interval = setInterval(() => {
-        if (!currentTrack.startedAt) return;
-        const elapsedSec = (Date.now() - new Date(currentTrack.startedAt).getTime()) / 1000;
-        const clamped = Math.min(elapsedSec, currentTrack.durationSec);
+        const track = currentTrackTimerRef.current;
+        if (!track) return;
+        // Non-hosts: prefer the sync-corrected startedAt to stay accurate
+        // between the 6-second socket sync windows.
+        const effectiveStartedAt =
+          syncCorrectionRef.current?.startedAt || track.startedAt;
+        if (!effectiveStartedAt) return;
+        const elapsedSec = (Date.now() - new Date(effectiveStartedAt).getTime()) / 1000;
+        const clamped = Math.min(elapsedSec, track.durationSec);
         setPlaybackProgress(clamped);
       }, 500);
     } else if (currentTrack && !currentTrack.isPlaying) {
@@ -66,7 +86,8 @@ export const RoomProvider = ({ children }) => {
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [currentTrack]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentTrack?.youtubeVideoId, currentTrack?.isPlaying]);
 
   // Handle Socket.IO Event Listeners for active room
   useEffect(() => {
@@ -121,6 +142,9 @@ export const RoomProvider = ({ children }) => {
     // Live Track Changed Event
     const handleTrackChanged = ({ currentTrack: newTrack, queue: newQueue }) => {
       setCurrentTrack(newTrack);
+      // Reset sync correction when the track changes — the previous track's
+      // corrected startedAt must not bleed into the new track's timer.
+      syncCorrectionRef.current = null;
       if (newQueue) setQueue(newQueue);
 
       if (newTrack?.title) {
@@ -153,18 +177,13 @@ export const RoomProvider = ({ children }) => {
       setRemoteSyncEvent(syncData);
       if (typeof syncData.progressSec === 'number') {
         setPlaybackProgress(syncData.progressSec);
-        // Bug #2 fix (non-host): recalculate startedAt from the received progressSec so
-        // the interval-based progress timer in this context stays accurate between the
-        // 6-second sync windows, instead of freezing at the last synced value.
+        // Bug E fix: store the corrected startedAt in a ref instead of calling
+        // setCurrentTrack(), which was triggering a full re-render every 6 seconds.
+        // The progress timer interval reads from syncCorrectionRef.current directly.
         if (syncData.isPlaying) {
-          setCurrentTrack((prev) => {
-            if (!prev || !prev.youtubeVideoId) return prev;
-            return {
-              ...prev,
-              startedAt: new Date(Date.now() - syncData.progressSec * 1000),
-              isPlaying: true
-            };
-          });
+          syncCorrectionRef.current = {
+            startedAt: new Date(Date.now() - syncData.progressSec * 1000)
+          };
         }
       }
     };
@@ -419,6 +438,10 @@ export const RoomProvider = ({ children }) => {
   // Host Player Controls
   const togglePlay = async () => {
     if (!room?.code) return;
+    // Bug D fix: debounce guard to prevent rapid successive clicks from racing
+    // the server and leaving isPlaying in an undefined/flipped state.
+    if (isTogglingPlayRef.current) return;
+    isTogglingPlayRef.current = true;
     try {
       const data = await playerApi.togglePlay(room.code);
       if (data.success && data.currentTrack) {
@@ -426,6 +449,9 @@ export const RoomProvider = ({ children }) => {
       }
     } catch (err) {
       toastError(err.message, 'Playback control failed');
+    } finally {
+      // Allow the next toggle after the server has responded
+      isTogglingPlayRef.current = false;
     }
   };
 

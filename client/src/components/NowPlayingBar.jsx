@@ -15,7 +15,8 @@ import {
   EyeOff,
   Maximize2,
   Music,
-  Check
+  Check,
+  Loader2
 } from 'lucide-react';
 
 const formatTime = (totalSeconds) => {
@@ -59,6 +60,8 @@ const NowPlayingBar = () => {
   // Refs for volume/mute so onPlayerReady closure always sees the latest values
   const volumeRef = useRef(volume);
   const isMutedRef = useRef(isMuted);
+  // Bug D fix: prevent rapid play/pause clicks from firing multiple API calls
+  const isTogglingRef = useRef(false);
 
   isHostRef.current = isHost;
   currentTrackRef.current = currentTrack;
@@ -139,6 +142,22 @@ const NowPlayingBar = () => {
       }
 
       setPlayerReady(false);
+      setNeedsInteraction(false); // Reset on every new track
+
+      // Helper: after calling playVideo(), check 1.5s later if the browser actually
+      // started playback. If not (autoplay policy blocked it), show a tap-to-play prompt.
+      const checkAutoplayBlocked = (playerTarget) => {
+        setTimeout(() => {
+          try {
+            const state = playerTarget.getPlayerState();
+            // 1 = PLAYING, 3 = BUFFERING — both mean autoplay worked
+            if (state !== 1 && state !== 3) {
+              console.log('[YouTube Player] Autoplay blocked by browser. Showing interaction prompt.');
+              setNeedsInteraction(true);
+            }
+          } catch (e) {}
+        }, 1500);
+      };
 
       const onPlayerReady = (event) => {
         console.log('✅ [YouTube Player] Ready for video:', videoId);
@@ -155,6 +174,7 @@ const NowPlayingBar = () => {
         // ensures it plays even if autoplay was blocked by the browser.
         if (currentTrackRef.current?.isPlaying) {
           event.target.playVideo();
+          checkAutoplayBlocked(event.target);
         }
       };
 
@@ -163,7 +183,10 @@ const NowPlayingBar = () => {
         //                         2 (PAUSED), 3 (BUFFERING), 5 (CUED)
         const YT = window.YT;
 
-        if (event.data === 0) {
+        if (event.data === 1) {
+          // Player started/resumed — dismiss any interaction prompt
+          setNeedsInteraction(false);
+        } else if (event.data === 0) {
           // Track finished — notify host so queue can advance
           console.log('[YouTube Player] Track ended. Notifying host advance...');
           if (isHostRef.current) {
@@ -177,6 +200,7 @@ const NowPlayingBar = () => {
           if (currentTrackRef.current?.isPlaying) {
             console.log('[YouTube Player] Video CUED — starting playback for:', videoId);
             event.target.playVideo();
+            checkAutoplayBlocked(event.target);
           }
         }
       };
@@ -304,6 +328,7 @@ const NowPlayingBar = () => {
   }, [isHost, remoteSeekEvent]);
 
   // Handle Play/Pause Toggle
+  // Bug D fix: isTogglingRef prevents multiple in-flight API calls from rapid clicks.
   const handleToggle = () => {
     if (!isHost) {
       // Non-host: allow local play/resume if autoplay was suspended by browser
@@ -320,6 +345,8 @@ const NowPlayingBar = () => {
       }
       return;
     }
+
+    if (isTogglingRef.current) return;
 
     if (playerRef.current) {
       try {
@@ -438,12 +465,34 @@ const NowPlayingBar = () => {
                 }
                 alt={currentTrack.title}
                 className={`w-16 h-16 sm:w-20 sm:h-20 rounded-2xl object-cover shadow-2xl border border-white/20 transition-all ${
-                  currentTrack.isPlaying ? 'shadow-rose-500/20' : 'grayscale-[20%]'
+                  currentTrack.isPlaying && playerReady ? 'shadow-rose-500/20' : 'grayscale-[20%]'
                 }`}
               />
 
+              {/* Bug B3 — Loading spinner while player initialises for a new track */}
+              {!playerReady && currentTrack?.youtubeVideoId && (
+                <div className="absolute inset-0 bg-black/60 rounded-2xl flex items-center justify-center">
+                  <Loader2 className="w-6 h-6 text-rose-400 animate-spin" />
+                </div>
+              )}
+
+              {/* Bug B1 — Browser autoplay blocked: show a tap-to-play prompt */}
+              {needsInteraction && playerReady && (
+                <button
+                  onClick={() => {
+                    try { playerRef.current?.playVideo(); } catch (e) {}
+                    setNeedsInteraction(false);
+                  }}
+                  className="absolute inset-0 bg-black/60 rounded-2xl flex flex-col items-center justify-center gap-1 cursor-pointer hover:bg-black/70 transition-colors"
+                  title="Click to start playback"
+                >
+                  <Play className="w-6 h-6 text-white fill-current" />
+                  <span className="text-[10px] text-white/90 font-bold uppercase tracking-wider">Tap to Play</span>
+                </button>
+              )}
+
               {/* Animated Equalizer Wave Overlay when Playing */}
-              {currentTrack.isPlaying && !showVideo && (
+              {currentTrack.isPlaying && playerReady && !showVideo && !needsInteraction && (
                 <div className="absolute inset-0 bg-black/40 rounded-2xl flex items-center justify-center gap-0.5 pointer-events-none">
                   <div className="equalizer-bar" />
                   <div className="equalizer-bar" />
@@ -487,10 +536,15 @@ const NowPlayingBar = () => {
                 <>
                   <button
                     onClick={handleToggle}
-                    className="w-12 h-12 rounded-full bg-gradient-to-r from-rose-500 to-red-600 hover:from-rose-400 hover:to-red-500 text-white flex items-center justify-center shadow-lg shadow-rose-500/30 hover:scale-105 active:scale-95 transition-all"
+                    disabled={!playerReady}
+                    className={`w-12 h-12 rounded-full bg-gradient-to-r from-rose-500 to-red-600 hover:from-rose-400 hover:to-red-500 text-white flex items-center justify-center shadow-lg shadow-rose-500/30 hover:scale-105 active:scale-95 transition-all ${
+                      !playerReady ? 'opacity-60 cursor-not-allowed' : ''
+                    }`}
                     title={currentTrack.isPlaying ? 'Pause playback' : 'Resume playback'}
                   >
-                    {currentTrack.isPlaying ? (
+                    {!playerReady ? (
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                    ) : currentTrack.isPlaying ? (
                       <Pause className="w-5 h-5 fill-current" />
                     ) : (
                       <Play className="w-5 h-5 fill-current ml-0.5" />

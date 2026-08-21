@@ -1,6 +1,7 @@
 import React from 'react';
 import { useRoom } from '../context/RoomContext';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 import {
   ThumbsUp,
   Trash2,
@@ -19,7 +20,17 @@ const formatDuration = (seconds) => {
 
 const QueueList = () => {
   const { user, isAuthenticated } = useAuth();
+  const { toastError } = useToast();
   const { queue, isHost, toggleVote, removeFromQueue } = useRoom();
+
+  // Bug C fix: show a clear toast instead of silently doing nothing when not logged in
+  const requireAuth = (action) => {
+    if (!isAuthenticated) {
+      toastError('Please log in to vote on songs.', 'Login Required');
+      return;
+    }
+    action();
+  };
 
   const activeQueue = queue.filter((t) => !t.played);
 
@@ -152,15 +163,16 @@ const QueueList = () => {
 
                 {/* Vote Button */}
                 <button
-                  onClick={() => toggleVote(track._id)}
-                  disabled={!isAuthenticated}
+                  onClick={() => requireAuth(() => toggleVote(track._id))}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs transition-all active:scale-95 ${
                     hasVoted
                       ? 'bg-rose-500 text-white shadow-lg shadow-rose-500/30 hover:bg-rose-400'
                       : 'bg-white/10 hover:bg-white/20 text-white border border-white/10'
                   }`}
                   title={
-                    hasVoted
+                    !isAuthenticated
+                      ? 'Log in to vote'
+                      : hasVoted
                       ? 'Click to remove your vote'
                       : 'Click to upvote this track'
                   }

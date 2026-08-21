@@ -110,13 +110,13 @@ export const addToQueue = async (req, res) => {
 
     let sortedQueue = room.getSortedQueue();
 
-    // If no song is currently playing, start playing this song immediately!
-    const isCurrentlyPlaying =
-      room.currentTrack &&
-      room.currentTrack.youtubeVideoId &&
-      room.currentTrack.isPlaying;
+    // If no song is currently loaded (not just paused), auto-start this track.
+    // Bug A fix: previously checked `isPlaying`, which caused the current paused
+    // track to be skipped whenever a new song was added. We now check for the
+    // presence of youtubeVideoId — a track is "loaded" regardless of play state.
+    const hasCurrentTrack = room.currentTrack?.youtubeVideoId;
 
-    if (!isCurrentlyPlaying && room.settings?.autoPlay !== false) {
+    if (!hasCurrentTrack && room.settings?.autoPlay !== false) {
       console.log(`[QueueController] Room ${room.code} is idle. Auto-starting first YouTube track.`);
       const playResult = await playbackService.playNextTrack(room.code, room.hostUserId);
       sortedQueue = playResult?.queue || sortedQueue;
