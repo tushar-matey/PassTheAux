@@ -32,7 +32,9 @@ const NowPlayingBar = () => {
     isHost,
     togglePlay,
     skipTrack,
-    activeDeviceName
+    activeDeviceName,
+    isWebPlayerReady,
+    isPremium
   } = useRoom();
 
   const [showDeviceModal, setShowDeviceModal] = useState(false);
@@ -246,17 +248,36 @@ const NowPlayingBar = () => {
             {isHost && (
               <button
                 onClick={() => setShowDeviceModal(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold text-slate-300 hover:text-white transition-all"
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all ${
+                  isWebPlayerReady
+                    ? 'bg-spotify-green/10 border-spotify-green/30 text-spotify-green hover:bg-spotify-green/20'
+                    : 'bg-white/5 hover:bg-white/10 border-white/10 text-slate-300 hover:text-white'
+                }`}
                 title="Change Spotify Playback Device"
               >
-                <Laptop className="w-3.5 h-3.5 text-spotify-green" />
+                <Laptop className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">
-                  {activeDeviceName || 'Select Device'}
+                  {activeDeviceName || (isWebPlayerReady ? 'Web Player' : 'Select Device')}
                 </span>
               </button>
             )}
           </div>
         </div>
+
+        {/* Premium notice for Free Host accounts */}
+        {isHost && !isPremium && (
+          <div className="mt-4 pt-3 border-t border-white/10 flex items-center justify-between gap-2 text-xs text-amber-300/90">
+            <span className="flex items-center gap-1.5 font-medium">
+              <span>⚠️ Spotify Free Host: Full streaming playback requires a Spotify Premium account.</span>
+            </span>
+            <button
+              onClick={() => setShowDeviceModal(true)}
+              className="text-spotify-green underline hover:text-spotify-green-hover text-[11px]"
+            >
+              Device details
+            </button>
+          </div>
+        )}
       </div>
 
       {showDeviceModal && <DeviceModal onClose={() => setShowDeviceModal(false)} />}

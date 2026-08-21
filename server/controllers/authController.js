@@ -273,32 +273,42 @@ export const spotifyCallback = async (req, res) => {
   }
 };
 
-// @desc    Disconnect Spotify account
-// @route   POST /api/auth/spotify/disconnect
-export const disconnectSpotify = async (req, res) => {
+// @desc    Get fresh Spotify access token for Web Playback SDK
+// @route   GET /api/auth/spotify/token
+export const getSpotifyToken = async (req, res) => {
   try {
-    const user = await User.findById(req.user._id);
-    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+    const user = await User.findById(req.user._id).select(
+      '+spotifyAccessToken +spotifyRefreshToken'
+    );
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
 
-    user.spotifyAccessToken = null;
-    user.spotifyRefreshToken = null;
-    user.spotifyTokenExpiresAt = null;
-    user.spotifyProfile = {
-      id: null,
-      displayName: null,
-      email: null,
-      product: null,
-      images: [],
-      uri: null
-    };
+    if (!user.spotifyRefreshToken && !user.spotifyAccessToken) {
+      return res.status(400).json({
+        success: false,
+        message: 'Spotify account not connected for this user.'
+      });
+    }
 
-    await user.save();
+    const accessToken = await spotifyService.getValidUserAccessToken(user);
+
+    if (!accessToken) {
+      return res.status(401).json({
+        success: false,
+        message: 'Failed to retrieve or refresh Spotify access token.'
+      });
+    }
 
     return res.json({
       success: true,
-      message: 'Spotify account disconnected successfully.'
+      accessToken,
+      product: user.spotifyProfile?.product || 'free',
+      isPremium: user.hasSpotifyPremium() || user.spotifyProfile?.product === 'premium',
+      expiresAt: user.spotifyTokenExpiresAt
     });
   } catch (error) {
+    console.error('getSpotifyToken error:', error);
     return res.status(500).json({ success: false, message: error.message });
   }
 };

@@ -10,8 +10,8 @@ import { roomApi, queueApi, searchApi, playerApi } from '../services/api';
 import { getSocket, joinSocketRoom, leaveSocketRoom } from '../services/socket';
 import { useAuth } from './AuthContext';
 import { useToast } from './ToastContext';
+import useSpotifyWebPlayer from '../hooks/useSpotifyWebPlayer';
 import confetti from 'canvas-confetti';
-
 
 const RoomContext = createContext(null);
 
@@ -44,6 +44,52 @@ export const RoomProvider = ({ children }) => {
     user &&
     (room.hostUserId?._id === user._id || room.hostUserId === user._id)
   );
+
+  const setPlaybackDevice = useCallback(async (deviceId, deviceName) => {
+    if (!room?.code) return;
+    try {
+      console.log(`[RoomContext] Setting active playback device: ${deviceName} (${deviceId})...`);
+      const data = await playerApi.setRoomDevice(room.code, deviceId, deviceName);
+      if (data.success) {
+        setActiveDeviceId(deviceId);
+        setActiveDeviceName(deviceName);
+        toastSuccess(`Connected to ${deviceName}`);
+      }
+    } catch (err) {
+      console.error('[RoomContext] Failed to set playback device:', err.message);
+      toastError(err.message, 'Device Error');
+    }
+  }, [room?.code, toastSuccess, toastError]);
+
+  const handleDeviceReady = useCallback((deviceId, deviceName) => {
+    console.log('[RoomContext] Web Playback SDK is ready on device:', deviceId);
+    if (isHost) {
+      setPlaybackDevice(deviceId, deviceName);
+    }
+  }, [isHost, setPlaybackDevice]);
+
+  const handlePlayerError = useCallback((err) => {
+    if (err.type === 'PREMIUM_REQUIRED') {
+      toastError(err.message, 'Spotify Premium Required');
+    } else if (err.type === 'AUTH_ERROR') {
+      toastError(err.message, 'Spotify Auth Error');
+    }
+  }, [toastError]);
+
+  // Hook for Spotify Web Playback SDK
+  const {
+    player: spotifyPlayer,
+    webDeviceId,
+    isPlayerReady: isWebPlayerReady,
+    playerError: webPlayerError,
+    isPremium,
+    reconnectPlayer
+  } = useSpotifyWebPlayer({
+    isHost,
+    spotifyConnected: user?.spotifyConnected,
+    onDeviceReady: handleDeviceReady,
+    onPlayerError: handlePlayerError
+  });
 
   // Progress bar sync timer
   useEffect(() => {
@@ -375,20 +421,6 @@ export const RoomProvider = ({ children }) => {
     }
   };
 
-  const setPlaybackDevice = async (deviceId, deviceName) => {
-    if (!room?.code) return;
-    try {
-      const data = await playerApi.setRoomDevice(room.code, deviceId, deviceName);
-      if (data.success) {
-        setActiveDeviceId(deviceId);
-        setActiveDeviceName(deviceName);
-        toastSuccess(`Connected to ${deviceName}`);
-      }
-    } catch (err) {
-      toastError(err.message, 'Failed to set device');
-    }
-  };
-
   return (
     <RoomContext.Provider
       value={{
@@ -406,6 +438,12 @@ export const RoomProvider = ({ children }) => {
         searchResults,
         searchLoading,
         chatMessages,
+        spotifyPlayer,
+        webDeviceId,
+        isWebPlayerReady,
+        webPlayerError,
+        isPremium,
+        reconnectPlayer,
         loadRoom,
         createRoom,
         joinRoom,

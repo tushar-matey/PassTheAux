@@ -41,10 +41,16 @@ export const skipTrack = async (req, res) => {
 // @route   GET /api/player/devices
 export const getHostDevices = async (req, res) => {
   try {
-    const devices = await spotifyService.getDevices(req.user);
-    return res.json({ success: true, devices });
+    const result = await spotifyService.getDevices(req.user);
+    if (!result.success && result.code === 'PREMIUM_REQUIRED') {
+      return res.status(403).json(result);
+    }
+    if (!result.success && result.code === 'NOT_CONNECTED') {
+      return res.status(400).json(result);
+    }
+    return res.json(result);
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    return res.status(500).json({ success: false, code: 'SERVER_ERROR', message: error.message });
   }
 };
 
@@ -54,6 +60,10 @@ export const setRoomDevice = async (req, res) => {
   try {
     const { code } = req.params;
     const { deviceId, deviceName } = req.body;
+
+    if (!deviceId) {
+      return res.status(400).json({ success: false, message: 'deviceId is required' });
+    }
 
     const room = await Room.findOne({ code: code.toUpperCase() });
     if (!room) return res.status(404).json({ success: false, message: 'Room not found' });
@@ -66,17 +76,23 @@ export const setRoomDevice = async (req, res) => {
     room.activeDeviceName = deviceName || 'Spotify Device';
     await room.save();
 
-    // Transfer Spotify playback if host is connected
+    // Transfer Spotify playback to make it the active device
+    let transferSuccess = false;
+    let transferError = null;
     try {
       await spotifyService.transferPlayback(req.user, deviceId, false);
+      transferSuccess = true;
     } catch (e) {
-      console.warn('Could not transfer Spotify device immediately:', e.message);
+      transferError = e.message;
+      console.warn('[PlayerController] Transfer device warning:', e.message);
     }
 
     return res.json({
       success: true,
       activeDeviceId: room.activeDeviceId,
-      activeDeviceName: room.activeDeviceName
+      activeDeviceName: room.activeDeviceName,
+      transferred: transferSuccess,
+      transferMessage: transferError
     });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });

@@ -39,6 +39,7 @@ export const authApi = {
   register: (data) => api.post('/auth/register', data),
   login: (data) => api.post('/auth/login', data),
   getMe: () => api.get('/auth/me'),
+  getSpotifyToken: () => api.get('/auth/spotify/token'),
   getSpotifyLoginUrl: () => api.get('/auth/spotify/login-url'),
   disconnectSpotify: () => api.post('/auth/spotify/disconnect')
 };

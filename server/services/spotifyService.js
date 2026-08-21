@@ -239,22 +239,25 @@ class SpotifyService {
 
   // Refresh User Access Token if expired
   async getValidUserAccessToken(user) {
-    // If not a populated Mongoose doc or no user
     if (!user) return null;
 
     let accessToken = user.spotifyAccessToken;
     let refreshToken = user.spotifyRefreshToken;
     let expiresAt = user.spotifyTokenExpiresAt;
 
-    // If tokens are not loaded (due to select: false), query database
+    // If tokens are not loaded (due to select: false), query database safely
     if (!refreshToken && user._id) {
-      const fullUser = await User.findById(user._id).select(
-        '+spotifyAccessToken +spotifyRefreshToken'
-      );
-      if (fullUser) {
-        accessToken = fullUser.spotifyAccessToken;
-        refreshToken = fullUser.spotifyRefreshToken;
-        expiresAt = fullUser.spotifyTokenExpiresAt;
+      try {
+        const fullUser = await User.findById(user._id).select(
+          '+spotifyAccessToken +spotifyRefreshToken'
+        );
+        if (fullUser) {
+          accessToken = fullUser.spotifyAccessToken;
+          refreshToken = fullUser.spotifyRefreshToken;
+          expiresAt = fullUser.spotifyTokenExpiresAt;
+        }
+      } catch (err) {
+        console.warn('[SpotifyService] User query in getValidUserAccessToken:', err.message);
       }
     }
 
@@ -272,7 +275,10 @@ class SpotifyService {
     // Refresh token using Spotify OAuth refresh token endpoint
     if (refreshToken && this.isConfigured()) {
       try {
-        const authHeader = Buffer.from(`${this.clientId}:${this.clientSecret}`).toString('base64');
+        console.log('[SpotifyService] Access token expired or close to expiry. Refreshing token...');
+        const clientId = this.getClientId();
+        const clientSecret = this.getClientSecret();
+        const authHeader = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
         const params = new URLSearchParams({
           grant_type: 'refresh_token',
           refresh_token: refreshToken
@@ -293,18 +299,24 @@ class SpotifyService {
         const newExpiresIn = response.data.expires_in || 3600;
         const newExpiresAt = new Date(Date.now() + newExpiresIn * 1000);
 
-        // Update in database
-        await User.findByIdAndUpdate(user._id, {
-          spotifyAccessToken: newAccessToken,
-          spotifyTokenExpiresAt: newExpiresAt,
-          ...(response.data.refresh_token && {
-            spotifyRefreshToken: response.data.refresh_token
-          })
-        });
+        console.log('[SpotifyService] ✅ Token successfully refreshed! Valid for', newExpiresIn, 'seconds');
+
+        // Persist refreshed token to MongoDB if user._id exists
+        if (user._id) {
+          try {
+            await User.findByIdAndUpdate(user._id, {
+              spotifyAccessToken: newAccessToken,
+              spotifyRefreshToken: response.data.refresh_token || refreshToken,
+              spotifyTokenExpiresAt: newExpiresAt
+            });
+          } catch (updateErr) {
+            console.warn('[SpotifyService] Could not persist refreshed token:', updateErr.message);
+          }
+        }
 
         return newAccessToken;
       } catch (err) {
-        console.error('Failed to refresh Spotify token for user:', err.response?.data || err.message);
+        console.error('[SpotifyService] ❌ Failed to refresh Spotify user token:', err.response?.data || err.message);
         return null;
       }
     }
@@ -431,57 +443,114 @@ class SpotifyService {
   async getDevices(user) {
     const token = await this.getValidUserAccessToken(user);
     if (!token) {
-      return [];
+      return {
+        success: false,
+        code: 'NOT_CONNECTED',
+        message: 'Host has not connected a Spotify account.',
+        devices: []
+      };
     }
 
     try {
+      console.log('[SpotifyService] Fetching active devices from /v1/me/player/devices...');
       const response = await axios.get('https://api.spotify.com/v1/me/player/devices', {
         headers: {
           Authorization: `Bearer ${token}`
         }
       });
-      return response.data.devices || [];
+      const devices = response.data.devices || [];
+      console.log(`[SpotifyService] Found ${devices.length} Spotify device(s):`, devices.map(d => `${d.name} (${d.type}, active: ${d.is_active})`));
+      return {
+        success: true,
+        devices
+      };
     } catch (err) {
-      console.error('Failed to get Spotify devices:', err.response?.data || err.message);
-      return [];
+      console.error('[SpotifyService] Failed to get Spotify devices:', err.response?.data || err.message);
+      const status = err.response?.status;
+      const errorMsg = err.response?.data?.error?.message || err.message;
+
+      if (status === 403) {
+        return {
+          success: false,
+          code: 'PREMIUM_REQUIRED',
+          message: 'Playback and device control require Spotify Premium.',
+          devices: []
+        };
+      } else if (status === 401) {
+        return {
+          success: false,
+          code: 'TOKEN_EXPIRED',
+          message: 'Spotify authentication token expired. Please reconnect Spotify.',
+          devices: []
+        };
+      }
+
+      return {
+        success: false,
+        code: 'DEVICE_FETCH_ERROR',
+        message: errorMsg,
+        devices: []
+      };
     }
   }
 
   // Transfer Playback to specific device
-  async transferPlayback(user, deviceId, play = true) {
+  async transferPlayback(user, deviceId, play = false) {
     const token = await this.getValidUserAccessToken(user);
     if (!token) {
       throw new Error('Spotify is not connected for this user.');
     }
 
-    await axios.put(
-      'https://api.spotify.com/v1/me/player',
-      {
-        device_ids: [deviceId],
-        play: play
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
+    try {
+      console.log(`[SpotifyService] Transferring playback to device: ${deviceId} (play: ${play})...`);
+      await axios.put(
+        'https://api.spotify.com/v1/me/player',
+        {
+          device_ids: [deviceId],
+          play: play
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
         }
+      );
+      console.log(`[SpotifyService] Playback successfully transferred to device ${deviceId}`);
+      return { success: true };
+    } catch (err) {
+      console.error('[SpotifyService] Transfer playback failed:', err.response?.data || err.message);
+      const status = err.response?.status;
+      const errorMsg = err.response?.data?.error?.message || err.message;
+
+      if (status === 403) {
+        throw new Error('Spotify Premium is required to transfer playback.');
+      } else if (status === 404) {
+        throw new Error('Selected Spotify device is no longer online.');
       }
-    );
-    return true;
+      throw new Error(`Failed to transfer playback: ${errorMsg}`);
+    }
   }
 
   // Play a Spotify Track URI on host device
   async playTrack(user, trackUri, deviceId = null, positionMs = 0) {
     const token = await this.getValidUserAccessToken(user);
     if (!token) {
-      console.warn('Cannot play on Spotify: User does not have active Spotify token.');
-      return { success: false, mode: 'mock', message: 'No active Spotify token' };
+      console.warn('[SpotifyService] Cannot play on Spotify: User does not have active Spotify token.');
+      return {
+        success: false,
+        code: 'NOT_CONNECTED',
+        mode: 'mock',
+        message: 'No active Spotify token found for room host.'
+      };
     }
 
     try {
       const url = deviceId
         ? `https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`
         : 'https://api.spotify.com/v1/me/player/play';
+
+      console.log(`[SpotifyService] Triggering play on Spotify: ${trackUri} (device: ${deviceId || 'active'})...`);
 
       await axios.put(
         url,
@@ -496,13 +565,42 @@ class SpotifyService {
           }
         }
       );
+      console.log('[SpotifyService] Spotify play command succeeded!');
       return { success: true, mode: 'live' };
     } catch (err) {
-      console.error('Spotify Play API error:', err.response?.data || err.message);
+      console.error('[SpotifyService] Spotify Play API error:', err.response?.data || err.message);
+      const status = err.response?.status;
+      const reason = err.response?.data?.error?.reason;
+      const errorMsg = err.response?.data?.error?.message || err.message;
+
+      if (status === 404 || reason === 'NO_ACTIVE_DEVICE') {
+        return {
+          success: false,
+          code: 'NO_ACTIVE_DEVICE',
+          mode: 'error',
+          message: 'No active Spotify device found. Please open Spotify on your device or enable the PassTheAux Web Player.'
+        };
+      } else if (status === 403 || reason === 'PREMIUM_REQUIRED') {
+        return {
+          success: false,
+          code: 'PREMIUM_REQUIRED',
+          mode: 'error',
+          message: 'Spotify Premium is required for playback control.'
+        };
+      } else if (status === 401) {
+        return {
+          success: false,
+          code: 'TOKEN_EXPIRED',
+          mode: 'error',
+          message: 'Spotify session expired. Please reconnect Spotify.'
+        };
+      }
+
       return {
         success: false,
+        code: 'PLAY_ERROR',
         mode: 'error',
-        error: err.response?.data?.error?.message || err.message
+        message: errorMsg
       };
     }
   }
@@ -510,7 +608,7 @@ class SpotifyService {
   // Pause playback
   async pauseTrack(user, deviceId = null) {
     const token = await this.getValidUserAccessToken(user);
-    if (!token) return { success: false };
+    if (!token) return { success: false, code: 'NOT_CONNECTED' };
 
     try {
       const url = deviceId
@@ -528,7 +626,7 @@ class SpotifyService {
       );
       return { success: true };
     } catch (err) {
-      console.error('Spotify Pause API error:', err.response?.data || err.message);
+      console.error('[SpotifyService] Spotify Pause API error:', err.response?.data || err.message);
       return { success: false, error: err.message };
     }
   }
