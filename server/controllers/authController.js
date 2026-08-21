@@ -158,16 +158,40 @@ export const getSpotifyAuthUrl = async (req, res) => {
   }
 };
 
+// In-memory cache to prevent duplicate authorization code exchanges
+const processedCodes = new Map();
+
 // @desc    Handle Spotify OAuth callback
 // @route   GET /api/auth/spotify/callback
 export const spotifyCallback = async (req, res) => {
   const { code, state, error } = req.query;
-  const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
+  const clientUrl = (process.env.CLIENT_URL || 'http://localhost:5173').replace(/\/$/, '');
+
+  console.log('[Spotify Callback] Received callback with query:', {
+    hasCode: !!code,
+    state,
+    error
+  });
 
   if (error || !code) {
-    console.error('Spotify OAuth error:', error);
-    return res.redirect(`${clientUrl}/auth/spotify-callback?error=${encodeURIComponent(error || 'Access denied')}`);
+    console.error('[Spotify Callback] Error received from Spotify:', error);
+    return res.redirect(`${clientUrl}/auth/spotify-callback?error=${encodeURIComponent(error || 'Access denied by Spotify')}`);
   }
+
+  // Idempotency check: prevent duplicate requests with the same code
+  if (processedCodes.has(code)) {
+    console.warn('[Spotify Callback] Code already processed or in-flight:', code.slice(0, 8));
+    const cached = processedCodes.get(code);
+    if (cached.jwtToken) {
+      return res.redirect(`${clientUrl}/auth/spotify-callback?token=${cached.jwtToken}&spotifyConnected=true`);
+    }
+    return res.redirect(`${clientUrl}/auth/spotify-callback?error=${encodeURIComponent('Authorization code was already used. Please try logging in again.')}`);
+  }
+
+  // Mark code as processing
+  processedCodes.set(code, { timestamp: Date.now(), inFlight: true });
+  // Clean up old codes after 5 minutes
+  setTimeout(() => processedCodes.delete(code), 300000);
 
   try {
     const tokenData = await spotifyService.exchangeCodeForTokens(code);
@@ -217,14 +241,20 @@ export const spotifyCallback = async (req, res) => {
 
     const jwtToken = generateToken(user._id);
 
+    // Save token to idempotency cache
+    processedCodes.set(code, { timestamp: Date.now(), jwtToken });
+
+    console.log(`[Spotify Callback] Successfully authenticated Spotify user: ${user.name} (${user.email})`);
+
     // Redirect to client callback route with token
     return res.redirect(
       `${clientUrl}/auth/spotify-callback?token=${jwtToken}&spotifyConnected=true`
     );
   } catch (err) {
-    console.error('Spotify callback processing failed:', err.response?.data || err.message);
+    console.error('[Spotify Callback] ❌ Callback processing failed:', err.message);
+    const displayError = err.message || 'Failed to authenticate with Spotify';
     return res.redirect(
-      `${clientUrl}/auth/spotify-callback?error=${encodeURIComponent(err.message || 'Failed to authenticate with Spotify')}`
+      `${clientUrl}/auth/spotify-callback?error=${encodeURIComponent(displayError)}`
     );
   }
 };

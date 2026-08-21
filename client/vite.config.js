@@ -7,12 +7,15 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:5000',
-        changeOrigin: true
+        target: 'https://passtheaux.onrender.com',
+        changeOrigin: true,
+        secure: false
       },
       '/socket.io': {
-        target: 'http://localhost:5000',
-        ws: true
+        target: 'https://passtheaux.onrender.com',
+        ws: true,
+        changeOrigin: true,
+        secure: false
       }
     }
   }

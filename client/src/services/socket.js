@@ -1,18 +1,21 @@
 import { io } from 'socket.io-client';
 
+const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'https://passtheaux.onrender.com';
+
 let socket = null;
 
 export const getSocket = () => {
   if (!socket) {
-    socket = io(window.location.origin, {
+    socket = io(SOCKET_URL, {
       autoConnect: true,
       reconnection: true,
       reconnectionAttempts: 10,
-      reconnectionDelay: 1000
+      reconnectionDelay: 1000,
+      transports: ['websocket', 'polling']
     });
 
     socket.on('connect', () => {
-      console.log('[Socket.IO] Connected with id:', socket.id);
+      console.log('[Socket.IO] Connected to Render server with id:', socket.id);
     });
 
     socket.on('disconnect', (reason) => {

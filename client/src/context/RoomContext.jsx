@@ -12,6 +12,7 @@ import { useAuth } from './AuthContext';
 import { useToast } from './ToastContext';
 import confetti from 'canvas-confetti';
 
+
 const RoomContext = createContext(null);
 
 export const RoomProvider = ({ children }) => {
@@ -130,7 +131,7 @@ export const RoomProvider = ({ children }) => {
             spread: 60,
             origin: { y: 0.85 }
           });
-        } catch (e) {}
+        } catch (e) { }
       }
     };
 
@@ -284,11 +285,11 @@ export const RoomProvider = ({ children }) => {
           prev.map((item) =>
             item.spotifyTrackId === track.spotifyTrackId
               ? {
-                  ...item,
-                  inQueue: true,
-                  userVoted: true,
-                  votesCount: (item.votesCount || 0) + 1
-                }
+                ...item,
+                inQueue: true,
+                userVoted: true,
+                votesCount: (item.votesCount || 0) + 1
+              }
               : item
           )
         );
@@ -316,12 +317,12 @@ export const RoomProvider = ({ children }) => {
         setSearchResults((prev) =>
           prev.map((item) =>
             item.spotifyTrackId === trackIdOrSpotifyId ||
-            item.queueTrackId === trackIdOrSpotifyId
+              item.queueTrackId === trackIdOrSpotifyId
               ? {
-                  ...item,
-                  userVoted: data.userVoted,
-                  votesCount: data.voteCount
-                }
+                ...item,
+                userVoted: data.userVoted,
+                votesCount: data.voteCount
+              }
               : item
           )
         );

@@ -108,12 +108,26 @@ class SpotifyService {
     ];
   }
 
+  getClientId() {
+    return (process.env.SPOTIFY_CLIENT_ID || this.clientId || '').trim();
+  }
+
+  getClientSecret() {
+    return (process.env.SPOTIFY_CLIENT_SECRET || this.clientSecret || '').trim();
+  }
+
+  getRedirectUri() {
+    return (process.env.SPOTIFY_REDIRECT_URI || this.redirectUri || 'http://localhost:5000/api/auth/spotify/callback').trim();
+  }
+
   isConfigured() {
+    const cid = this.getClientId();
+    const sec = this.getClientSecret();
     return !!(
-      this.clientId &&
-      this.clientSecret &&
-      this.clientId !== 'your_spotify_client_id_here' &&
-      this.clientSecret !== 'your_spotify_client_secret_here'
+      cid &&
+      sec &&
+      cid !== 'your_spotify_client_id_here' &&
+      sec !== 'your_spotify_client_secret_here'
     );
   }
 
@@ -124,9 +138,9 @@ class SpotifyService {
     }
     const params = new URLSearchParams({
       response_type: 'code',
-      client_id: this.clientId,
+      client_id: this.getClientId(),
       scope: this.scopes.join(' '),
-      redirect_uri: this.redirectUri,
+      redirect_uri: this.getRedirectUri(),
       state: state,
       show_dialog: 'true'
     });
@@ -139,35 +153,90 @@ class SpotifyService {
       throw new Error('Spotify API credentials are not configured in environment variables.');
     }
 
-    const authHeader = Buffer.from(`${this.clientId}:${this.clientSecret}`).toString('base64');
-    const params = new URLSearchParams({
-      grant_type: 'authorization_code',
-      code: code,
-      redirect_uri: this.redirectUri
+    const clientId = this.getClientId();
+    const clientSecret = this.getClientSecret();
+    const redirectUri = this.getRedirectUri();
+
+    // Print masked credentials and parameters for verification
+    const maskedId = clientId.length > 4 ? `${clientId.slice(0, 2)}...${clientId.slice(-2)}` : '****';
+    const maskedSecret = clientSecret.length > 4 ? `${clientSecret.slice(0, 2)}...${clientSecret.slice(-2)}` : '****';
+    const maskedCode = code.length > 8 ? `${code.slice(0, 4)}...${code.slice(-4)}` : '****';
+
+    console.log('[SpotifyService] Initiating token exchange:', {
+      clientId: maskedId,
+      clientSecret: maskedSecret,
+      redirectUri: redirectUri,
+      code: maskedCode
     });
 
-    const response = await axios.post('https://accounts.spotify.com/api/token', params.toString(), {
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        Authorization: `Basic ${authHeader}`
-      }
-    });
+    const authHeader = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+    const params = new URLSearchParams();
+    params.append('grant_type', 'authorization_code');
+    params.append('code', code);
+    params.append('redirect_uri', redirectUri);
 
-    return {
-      accessToken: response.data.access_token,
-      refreshToken: response.data.refresh_token,
-      expiresIn: response.data.expires_in
-    };
+    try {
+      const response = await axios.post(
+        'https://accounts.spotify.com/api/token',
+        params.toString(),
+        {
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            Authorization: `Basic ${authHeader}`
+          }
+        }
+      );
+
+      console.log('[SpotifyService] Token exchange SUCCESS! Received access_token (expires in:', response.data.expires_in, 's)');
+
+      return {
+        accessToken: response.data.access_token,
+        refreshToken: response.data.refresh_token,
+        expiresIn: response.data.expires_in
+      };
+    } catch (err) {
+      console.error('[SpotifyService] ❌ Spotify Token Exchange Failed!');
+      console.error('Status:', err.response?.status, err.response?.statusText);
+      console.error('Response Body:', JSON.stringify(err.response?.data, null, 2));
+
+      const errData = err.response?.data;
+      const errorMsg =
+        errData?.error_description ||
+        errData?.error ||
+        err.message ||
+        'Unknown token exchange error';
+
+      throw new Error(`Spotify token exchange error (${err.response?.status || 500}): ${errorMsg}`);
+    }
   }
 
   // Fetch Spotify User Profile
   async getUserProfile(accessToken) {
-    const response = await axios.get('https://api.spotify.com/v1/me', {
-      headers: {
-        Authorization: `Bearer ${accessToken}`
+    try {
+      console.log('[SpotifyService] Fetching user profile from /v1/me...');
+      const response = await axios.get('https://api.spotify.com/v1/me', {
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        }
+      });
+      console.log('[SpotifyService] User profile fetched successfully:', response.data.display_name, `(${response.data.id})`);
+      return response.data;
+    } catch (err) {
+      console.error('[SpotifyService] ❌ Spotify getUserProfile Failed!');
+      console.error('Status:', err.response?.status, err.response?.statusText);
+      console.error('Response Body:', JSON.stringify(err.response?.data, null, 2));
+
+      const errData = err.response?.data;
+      const spotifyError = errData?.error?.message || errData?.message || err.message;
+
+      if (err.response?.status === 403) {
+        throw new Error(
+          `Spotify 403 Forbidden: "${spotifyError}". Note: If your Spotify App is in Development Mode, your Spotify account email/name must be added to 'User Management' in the Spotify Developer Dashboard.`
+        );
       }
-    });
-    return response.data;
+
+      throw new Error(`Spotify profile fetch error (${err.response?.status || 500}): ${spotifyError}`);
+    }
   }
 
   // Refresh User Access Token if expired

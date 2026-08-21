@@ -12,8 +12,12 @@ const SpotifyCallbackPage = () => {
 
   const [status, setStatus] = useState('processing');
   const [errorMsg, setErrorMsg] = useState('');
+  const hasProcessed = React.useRef(false);
 
   useEffect(() => {
+    if (hasProcessed.current) return;
+    hasProcessed.current = true;
+
     const params = new URLSearchParams(location.search);
     const token = params.get('token');
     const error = params.get('error');
@@ -23,7 +27,7 @@ const SpotifyCallbackPage = () => {
       setStatus('error');
       setErrorMsg(decodeURIComponent(error));
       toastError(decodeURIComponent(error), 'Spotify Auth Failed');
-      setTimeout(() => navigate('/login'), 3000);
+      setTimeout(() => navigate('/login'), 5000);
       return;
     }
 
@@ -37,7 +41,7 @@ const SpotifyCallbackPage = () => {
     } else {
       setStatus('error');
       setErrorMsg('No token received from Spotify.');
-      setTimeout(() => navigate('/login'), 3000);
+      setTimeout(() => navigate('/login'), 4000);
     }
   }, [location, navigate, setAuthToken, refreshUser, toastSuccess, toastError]);
 
