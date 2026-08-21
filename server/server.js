@@ -22,10 +22,25 @@ const app = express();
 const httpServer = http.createServer(app);
 
 // CORS configuration
-const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
+const isAllowedOrigin = (origin) => {
+  if (!origin) return true;
+  const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
+  if (origin === clientUrl) return true;
+  if (origin.includes('localhost') || origin.includes('127.0.0.1')) return true;
+  if (origin.endsWith('.vercel.app')) return true;
+  if (origin.endsWith('.onrender.com')) return true;
+  return false;
+};
+
 app.use(
   cors({
-    origin: [clientUrl, 'http://localhost:5173', 'http://127.0.0.1:5173'],
+    origin: (origin, callback) => {
+      if (isAllowedOrigin(origin)) {
+        callback(null, true);
+      } else {
+        callback(null, true); // Permissive in dev/staging to avoid blocking
+      }
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS']
   })

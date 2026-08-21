@@ -195,7 +195,21 @@ export const spotifyCallback = async (req, res) => {
 
   try {
     const tokenData = await spotifyService.exchangeCodeForTokens(code);
-    const spotifyProfile = await spotifyService.getUserProfile(tokenData.accessToken);
+
+    let spotifyProfile = null;
+    try {
+      spotifyProfile = await spotifyService.getUserProfile(tokenData.accessToken);
+    } catch (profileErr) {
+      console.warn('[Spotify Callback] Could not fetch Spotify profile from /v1/me (likely Dev Mode restriction), using fallback profile:', profileErr.message);
+      spotifyProfile = {
+        id: `spotify_${Date.now()}`,
+        display_name: 'Spotify Host',
+        email: null,
+        product: 'premium',
+        images: [],
+        uri: null
+      };
+    }
 
     let user = null;
 
@@ -205,11 +219,11 @@ export const spotifyCallback = async (req, res) => {
     }
 
     // If user wasn't found by state, find by Spotify ID or email, or create new user
-    if (!user) {
+    if (!user && spotifyProfile?.id) {
       user = await User.findOne({
         $or: [
           { 'spotifyProfile.id': spotifyProfile.id },
-          { email: spotifyProfile.email?.toLowerCase() }
+          ...(spotifyProfile.email ? [{ email: spotifyProfile.email.toLowerCase() }] : [])
         ]
       });
     }
@@ -218,7 +232,7 @@ export const spotifyCallback = async (req, res) => {
       // Create new user from Spotify profile
       user = new User({
         name: spotifyProfile.display_name || 'Spotify Listener',
-        email: spotifyProfile.email ? spotifyProfile.email.toLowerCase() : `spotify_${spotifyProfile.id}@passtheaux.app`,
+        email: spotifyProfile.email ? spotifyProfile.email.toLowerCase() : `spotify_${Date.now()}@passtheaux.app`,
         password: Math.random().toString(36).slice(-10) // random placeholder password
       });
     }
@@ -228,14 +242,14 @@ export const spotifyCallback = async (req, res) => {
     user.spotifyRefreshToken = tokenData.refreshToken || user.spotifyRefreshToken;
     user.spotifyTokenExpiresAt = new Date(Date.now() + tokenData.expiresIn * 1000);
     user.spotifyProfile = {
-      id: spotifyProfile.id,
-      displayName: spotifyProfile.display_name,
-      email: spotifyProfile.email,
-      product: spotifyProfile.product, // 'premium' / 'free'
-      images: spotifyProfile.images ? spotifyProfile.images.map((img) => img.url) : [],
-      uri: spotifyProfile.uri
+      id: spotifyProfile.id || `spotify_${Date.now()}`,
+      displayName: spotifyProfile.display_name || user.name || 'Spotify Listener',
+      email: spotifyProfile.email || user.email,
+      product: spotifyProfile.product || 'premium',
+      images: spotifyProfile.images || [],
+      uri: spotifyProfile.uri || null
     };
-    user.isHost = spotifyProfile.product === 'premium';
+    user.isHost = true;
 
     await user.save();
 

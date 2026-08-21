@@ -11,16 +11,14 @@ class SpotifyService {
     this.appAccessToken = null;
     this.appTokenExpiresAt = null;
 
-    // Spotify Scopes required for complete playback control and profile
+    // Spotify Scopes required for playback control and profile
     this.scopes = [
       'user-read-playback-state',
       'user-modify-playback-state',
       'user-read-currently-playing',
       'user-read-email',
       'user-read-private',
-      'streaming',
-      'app-remote-control',
-      'playlist-read-private'
+      'streaming'
     ];
 
     // Rich fallback catalog for testing/demo when keys are not yet configured
