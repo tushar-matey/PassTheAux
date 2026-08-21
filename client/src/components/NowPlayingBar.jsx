@@ -62,11 +62,19 @@ const NowPlayingBar = () => {
   const isMutedRef = useRef(isMuted);
   // Bug D fix: prevent rapid play/pause clicks from firing multiple API calls
   const isTogglingRef = useRef(false);
+  // Store callbacks in refs so the player useEffect closure always calls the
+  // latest version WITHOUT needing them as deps (which would destroy/recreate
+  // the YT player every time context re-renders — the root cause of the
+  // loading↔play flicker loop when the first song is added).
+  const notifyTrackEndedRef = useRef(notifyTrackEnded);
+  const skipTrackRef = useRef(skipTrack);
 
   isHostRef.current = isHost;
   currentTrackRef.current = currentTrack;
   volumeRef.current = volume;
   isMutedRef.current = isMuted;
+  notifyTrackEndedRef.current = notifyTrackEnded;
+  skipTrackRef.current = skipTrack;
 
   // Non-host: keep localProgress in sync with socket-driven playbackProgress from context
   useEffect(() => {
@@ -190,7 +198,7 @@ const NowPlayingBar = () => {
           // Track finished — notify host so queue can advance
           console.log('[YouTube Player] Track ended. Notifying host advance...');
           if (isHostRef.current) {
-            notifyTrackEnded(currentTrackRef.current?.youtubeVideoId);
+            notifyTrackEndedRef.current(currentTrackRef.current?.youtubeVideoId);
           }
         } else if (event.data === YT.PlayerState.CUED) {
           // Bug #5 fix: Video is now fully cued and buffered — SAFE to call playVideo().
@@ -211,7 +219,7 @@ const NowPlayingBar = () => {
         if (isHostRef.current && (event.data === 101 || event.data === 150 || event.data === 100)) {
           console.warn('[YouTube Player] Video restricted from embedding. Auto-skipping...');
           setTimeout(() => {
-            skipTrack();
+            skipTrackRef.current();
           }, 2000);
         }
       };
@@ -251,8 +259,11 @@ const NowPlayingBar = () => {
     }
 
     // Note: no cleanup destroy here — the NEXT run of this effect will handle it
-    // to avoid a race where the div is unmounted before the new player is attached
-  }, [currentTrack?.youtubeVideoId, notifyTrackEnded, skipTrack]);
+    // to avoid a race where the div is unmounted before the new player is attached.
+    // Deps: ONLY youtubeVideoId — callbacks are accessed via refs so changes to
+    // notifyTrackEnded/skipTrack never trigger a player destroy-recreate cycle.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentTrack?.youtubeVideoId]);
 
   // Host Periodic Sync Broadcast
   useEffect(() => {

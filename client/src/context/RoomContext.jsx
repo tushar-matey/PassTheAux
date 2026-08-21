@@ -455,7 +455,7 @@ export const RoomProvider = ({ children }) => {
     }
   };
 
-  const skipTrack = async () => {
+  const skipTrack = useCallback(async () => {
     if (!room?.code) return;
     try {
       const data = await playerApi.skipTrack(room.code);
@@ -467,7 +467,8 @@ export const RoomProvider = ({ children }) => {
     } catch (err) {
       toastError(err.message, 'Skip failed');
     }
-  };
+  }, [room?.code, toastInfo, toastError]);
+
 
   return (
     <RoomContext.Provider
