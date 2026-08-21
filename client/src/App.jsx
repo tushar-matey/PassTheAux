@@ -7,7 +7,6 @@ import Navbar from './components/Navbar';
 import HomePage from './pages/HomePage';
 import RoomPage from './pages/RoomPage';
 import { LoginPage, SignupPage } from './pages/AuthPages';
-import SpotifyCallbackPage from './pages/SpotifyCallbackPage';
 
 function App() {
   return (
@@ -15,7 +14,7 @@ function App() {
       <AuthProvider>
         <ToastProvider>
           <RoomProvider>
-            <div className="min-h-screen bg-cyber-bg text-slate-100 flex flex-col font-sans selection:bg-spotify-green selection:text-black">
+            <div className="min-h-screen bg-cyber-bg text-slate-100 flex flex-col font-sans selection:bg-rose-500 selection:text-white">
               <Navbar />
               <main className="flex-1">
                 <Routes>
@@ -23,7 +22,6 @@ function App() {
                   <Route path="/room/:code" element={<RoomPage />} />
                   <Route path="/login" element={<LoginPage />} />
                   <Route path="/signup" element={<SignupPage />} />
-                  <Route path="/auth/spotify-callback" element={<SpotifyCallbackPage />} />
                   <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
               </main>

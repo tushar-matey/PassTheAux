@@ -1,15 +1,14 @@
 import Room from '../models/Room.js';
 import User from '../models/User.js';
-import spotifyService from './spotifyService.js';
 import socketService from './socketService.js';
 
 class PlaybackService {
   constructor() {
     this.intervalId = null;
-    this.checkIntervalMs = 3000; // Check rooms every 3s
+    this.checkIntervalMs = 4000; // Check rooms every 4s
   }
 
-  // Start background playback monitoring loop
+  // Start background playback monitoring loop (fallback in case client track-ended fails)
   startMonitor() {
     if (this.intervalId) return;
 
@@ -19,7 +18,7 @@ class PlaybackService {
       });
     }, this.checkIntervalMs);
 
-    console.log('[PlaybackService] Active playback monitor started');
+    console.log('[PlaybackService] Active YouTube playback monitor started');
   }
 
   stopMonitor() {
@@ -29,7 +28,7 @@ class PlaybackService {
     }
   }
 
-  // Periodic check for rooms whose current track has finished
+  // Periodic check for rooms whose current track duration has elapsed (+ 5s grace period)
   async checkActiveRooms() {
     const activeRooms = await Room.find({
       'currentTrack.isPlaying': true,
@@ -39,14 +38,17 @@ class PlaybackService {
     const now = Date.now();
 
     for (const room of activeRooms) {
-      if (!room.currentTrack || !room.currentTrack.durationMs) continue;
+      if (!room.currentTrack || !room.currentTrack.durationSec) continue;
+
+      const durationMs = (room.currentTrack.durationSec || 0) * 1000;
+      if (durationMs <= 0) continue;
 
       const elapsed = now - new Date(room.currentTrack.startedAt).getTime();
 
-      // If track has reached its duration (+ 1s grace period)
-      if (elapsed >= room.currentTrack.durationMs) {
+      // Grace period of 5 seconds to give YouTube player time to fire onEnded event
+      if (elapsed >= durationMs + 5000) {
         console.log(
-          `[PlaybackService] Track finished in room ${room.code}: "${room.currentTrack.name}". Advancing queue...`
+          `[PlaybackService] Track duration finished in room ${room.code}: "${room.currentTrack.title}". Advancing queue...`
         );
         await this.playNextTrack(room.code, room.hostUserId);
       }
@@ -59,22 +61,19 @@ class PlaybackService {
       const room = await Room.findOne({ code: roomCode.toUpperCase() }).populate('hostUserId');
       if (!room) return null;
 
-      const host = hostUser || room.hostUserId;
       const sortedQueue = room.getSortedQueue();
 
       // If queue is empty, set currentTrack to not playing
       if (sortedQueue.length === 0) {
-        if (room.currentTrack && room.currentTrack.spotifyTrackId) {
+        if (room.currentTrack && room.currentTrack.youtubeVideoId) {
           // Move current track to history
           room.history.unshift({
-            spotifyTrackId: room.currentTrack.spotifyTrackId,
-            name: room.currentTrack.name,
-            artist: room.currentTrack.artist,
-            albumArt: room.currentTrack.albumArt,
-            albumName: room.currentTrack.albumName,
-            durationMs: room.currentTrack.durationMs,
-            uri: room.currentTrack.uri,
-            previewUrl: room.currentTrack.previewUrl,
+            youtubeVideoId: room.currentTrack.youtubeVideoId,
+            title: room.currentTrack.title,
+            channelTitle: room.currentTrack.channelTitle,
+            thumbnailUrl: room.currentTrack.thumbnailUrl,
+            durationSec: room.currentTrack.durationSec,
+            durationMs: (room.currentTrack.durationSec || 0) * 1000,
             addedBy: room.currentTrack.addedBy,
             votes: [],
             addedAt: room.currentTrack.startedAt || new Date(),
@@ -84,24 +83,24 @@ class PlaybackService {
         }
 
         room.currentTrack = {
-          spotifyTrackId: null,
-          name: null,
-          artist: null,
-          albumArt: '',
-          albumName: '',
+          youtubeVideoId: null,
+          title: null,
+          channelTitle: null,
+          thumbnailUrl: '',
+          durationSec: 0,
           durationMs: 0,
-          uri: null,
-          previewUrl: null,
           addedBy: null,
           startedAt: null,
           isPlaying: false,
-          progressMs: 0
+          progressSec: 0,
+          progressMs: 0,
+          lastSyncedAt: new Date()
         };
 
         await room.save();
 
         socketService.broadcastTrackChanged(room.code, room.currentTrack, []);
-        return { room, currentTrack: null };
+        return { room, currentTrack: null, queue: [] };
       }
 
       // Next track is the first item in sorted queue (highest votes, earliest added)
@@ -115,16 +114,14 @@ class PlaybackService {
       }
 
       // Move previous current track to history if valid
-      if (room.currentTrack && room.currentTrack.spotifyTrackId) {
+      if (room.currentTrack && room.currentTrack.youtubeVideoId) {
         room.history.unshift({
-          spotifyTrackId: room.currentTrack.spotifyTrackId,
-          name: room.currentTrack.name,
-          artist: room.currentTrack.artist,
-          albumArt: room.currentTrack.albumArt,
-          albumName: room.currentTrack.albumName,
-          durationMs: room.currentTrack.durationMs,
-          uri: room.currentTrack.uri,
-          previewUrl: room.currentTrack.previewUrl,
+          youtubeVideoId: room.currentTrack.youtubeVideoId,
+          title: room.currentTrack.title,
+          channelTitle: room.currentTrack.channelTitle,
+          thumbnailUrl: room.currentTrack.thumbnailUrl,
+          durationSec: room.currentTrack.durationSec,
+          durationMs: (room.currentTrack.durationSec || 0) * 1000,
           addedBy: room.currentTrack.addedBy,
           votes: [],
           addedAt: room.currentTrack.startedAt || new Date(),
@@ -140,40 +137,28 @@ class PlaybackService {
 
       // Set new current track
       room.currentTrack = {
-        spotifyTrackId: nextTrack.spotifyTrackId,
-        name: nextTrack.name,
-        artist: nextTrack.artist,
-        albumArt: nextTrack.albumArt,
-        albumName: nextTrack.albumName,
-        durationMs: nextTrack.durationMs,
-        uri: nextTrack.uri,
-        previewUrl: nextTrack.previewUrl,
+        youtubeVideoId: nextTrack.youtubeVideoId,
+        title: nextTrack.title,
+        channelTitle: nextTrack.channelTitle,
+        thumbnailUrl: nextTrack.thumbnailUrl,
+        durationSec: nextTrack.durationSec || 0,
+        durationMs: (nextTrack.durationSec || 0) * 1000,
         addedBy: nextTrack.addedBy,
         startedAt: new Date(),
         isPlaying: true,
+        progressSec: 0,
         progressMs: 0,
         lastSyncedAt: new Date()
       };
 
       await room.save();
 
-      // Trigger Spotify Playback on Host Device if connected
-      if (host) {
-        try {
-          const playResult = await spotifyService.playTrack(
-            host,
-            nextTrack.uri,
-            room.activeDeviceId,
-            0
-          );
-          console.log(`[PlaybackService] Spotify play trigger:`, playResult);
-        } catch (spotifyErr) {
-          console.warn('[PlaybackService] Spotify playback trigger warning:', spotifyErr.message);
-        }
-      }
-
       const remainingQueue = room.getSortedQueue();
       socketService.broadcastTrackChanged(room.code, room.currentTrack, remainingQueue);
+
+      console.log(
+        `[PlaybackService] Room ${room.code} Now Playing: "${room.currentTrack.title}" (${room.currentTrack.youtubeVideoId})`
+      );
 
       return { room, currentTrack: room.currentTrack, queue: remainingQueue };
     } catch (err) {
@@ -182,14 +167,13 @@ class PlaybackService {
     }
   }
 
-  // Skip current track
+  // Skip current track (Host only)
   async skipCurrentTrack(roomCode, user) {
     const room = await Room.findOne({ code: roomCode.toUpperCase() }).populate('hostUserId');
     if (!room) throw new Error('Room not found');
 
     const isHost = room.hostUserId._id.toString() === user._id.toString();
     if (!isHost) {
-      // In future can check voteThresholdToSkip, for now host has authority
       throw new Error('Only the room host can skip tracks.');
     }
 
@@ -206,7 +190,7 @@ class PlaybackService {
       throw new Error('Only the room host can control playback.');
     }
 
-    if (!room.currentTrack || !room.currentTrack.spotifyTrackId) {
+    if (!room.currentTrack || !room.currentTrack.youtubeVideoId) {
       // If nothing currently playing, start next track from queue
       return await this.playNextTrack(room.code, room.hostUserId);
     }
@@ -216,34 +200,28 @@ class PlaybackService {
     if (newPlayingState) {
       // Resume
       room.currentTrack.isPlaying = true;
-      room.currentTrack.startedAt = new Date(Date.now() - (room.currentTrack.progressMs || 0));
-      if (room.hostUserId) {
-        await spotifyService.playTrack(
-          room.hostUserId,
-          room.currentTrack.uri,
-          room.activeDeviceId,
-          room.currentTrack.progressMs || 0
-        );
-      }
+      room.currentTrack.startedAt = new Date(Date.now() - (room.currentTrack.progressSec || 0) * 1000);
+      room.currentTrack.lastSyncedAt = new Date();
     } else {
       // Pause
       room.currentTrack.isPlaying = false;
       if (room.currentTrack.startedAt) {
-        room.currentTrack.progressMs = Math.min(
-          room.currentTrack.durationMs,
-          Date.now() - new Date(room.currentTrack.startedAt).getTime()
+        const elapsedSec = Math.floor((Date.now() - new Date(room.currentTrack.startedAt).getTime()) / 1000);
+        room.currentTrack.progressSec = Math.min(
+          room.currentTrack.durationSec || 0,
+          Math.max(0, elapsedSec)
         );
+        room.currentTrack.progressMs = room.currentTrack.progressSec * 1000;
       }
-      if (room.hostUserId) {
-        await spotifyService.pauseTrack(room.hostUserId, room.activeDeviceId);
-      }
+      room.currentTrack.lastSyncedAt = new Date();
     }
 
     await room.save();
 
     socketService.broadcastPlaybackState(room.code, {
       isPlaying: room.currentTrack.isPlaying,
-      progressMs: room.currentTrack.progressMs,
+      progressSec: room.currentTrack.progressSec,
+      progressMs: (room.currentTrack.progressSec || 0) * 1000,
       startedAt: room.currentTrack.startedAt,
       currentTrack: room.currentTrack
     });

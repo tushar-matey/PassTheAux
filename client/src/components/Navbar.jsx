@@ -13,21 +13,18 @@ import {
   LogOut,
   LogIn,
   Music2,
-  Sparkles,
-  Laptop
+  Sparkles
 } from 'lucide-react';
 import ShareRoomModal from './ShareRoomModal';
-import DeviceModal from './DeviceModal';
 
 const Navbar = () => {
-  const { user, isAuthenticated, logout, connectSpotify } = useAuth();
-  const { room, members, isHost, activeDeviceName } = useRoom();
+  const { user, isAuthenticated, logout } = useAuth();
+  const { room, members, isHost } = useRoom();
   const { toastSuccess } = useToast();
   const navigate = useNavigate();
 
   const [copied, setCopied] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
-  const [showDeviceModal, setShowDeviceModal] = useState(false);
 
   const handleCopyCode = () => {
     if (!room?.code) return;
@@ -46,22 +43,22 @@ const Navbar = () => {
           {/* Logo & Brand */}
           <Link
             to="/"
-            className="flex items-center gap-2.5 group focus:outline-none focus:ring-2 focus:ring-spotify-green/50 rounded-lg p-1"
+            className="flex items-center gap-2.5 group focus:outline-none focus:ring-2 focus:ring-rose-500/50 rounded-xl p-1"
           >
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-spotify-green to-emerald-600 flex items-center justify-center shadow-lg shadow-spotify-green/20 group-hover:scale-105 transition-transform">
-              <Radio className="w-5 h-5 text-black animate-pulse" />
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-rose-500 to-red-600 flex items-center justify-center shadow-lg shadow-rose-500/20 group-hover:scale-105 transition-transform">
+              <Radio className="w-5 h-5 text-white animate-pulse" />
             </div>
             <div className="flex flex-col">
               <div className="flex items-center gap-1.5">
-                <span className="font-display font-black text-xl tracking-tight text-white group-hover:text-spotify-green transition-colors">
+                <span className="font-display font-black text-xl tracking-tight text-white group-hover:text-rose-400 transition-colors">
                   PassTheAux
                 </span>
-                <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-spotify-green/20 text-spotify-green border border-spotify-green/30">
+                <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/30">
                   Live
                 </span>
               </div>
               <span className="text-[11px] text-slate-400 font-medium hidden sm:inline">
-                Collaborative Music Queue
+                Collaborative YouTube Queue
               </span>
             </div>
           </Link>
@@ -78,11 +75,11 @@ const Navbar = () => {
                   <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
                     Room:
                   </span>
-                  <span className="font-mono font-bold text-sm text-spotify-green tracking-widest">
+                  <span className="font-mono font-bold text-sm text-rose-400 tracking-widest">
                     {room.code}
                   </span>
                   {copied ? (
-                    <Check className="w-3.5 h-3.5 text-spotify-green" />
+                    <Check className="w-3.5 h-3.5 text-rose-400" />
                   ) : (
                     <Copy className="w-3.5 h-3.5 text-slate-400" />
                   )}
@@ -105,42 +102,12 @@ const Navbar = () => {
             </div>
           )}
 
-          {/* Right: Spotify Status, Host Info, User Menu */}
+          {/* Right: Auth Profile / Navigation */}
           <div className="flex items-center gap-3">
-            {/* Spotify Host Connection Status */}
-            {isAuthenticated && (
-              <>
-                {user.spotifyConnected ? (
-                  <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-spotify-green/10 border border-spotify-green/30 text-xs font-medium text-spotify-green">
-                    <span className="w-2 h-2 rounded-full bg-spotify-green animate-ping" />
-                    <span>Spotify {user.hasSpotifyPremium ? 'Premium' : 'Connected'}</span>
-                    {isHost && (
-                      <button
-                        onClick={() => setShowDeviceModal(true)}
-                        className="ml-1 text-[11px] underline hover:text-white flex items-center gap-1"
-                      >
-                        <Laptop className="w-3 h-3" />
-                        {activeDeviceName || 'Select Device'}
-                      </button>
-                    )}
-                  </div>
-                ) : (
-                  <button
-                    onClick={connectSpotify}
-                    className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#1DB954]/20 hover:bg-[#1DB954]/30 border border-[#1DB954]/40 text-xs font-semibold text-[#1DB954] transition-all"
-                  >
-                    <Sparkles className="w-3.5 h-3.5" />
-                    <span>Connect Spotify</span>
-                  </button>
-                )}
-              </>
-            )}
-
-            {/* Auth Buttons / Profile */}
             {isAuthenticated ? (
               <div className="flex items-center gap-2">
                 <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10">
-                  <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-cyber-purple to-pink-500 flex items-center justify-center text-xs font-bold text-white shadow">
+                  <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-rose-500 to-cyber-purple flex items-center justify-center text-xs font-bold text-white shadow">
                     {user.name?.charAt(0).toUpperCase()}
                   </div>
                   <div className="flex flex-col text-left">
@@ -176,7 +143,7 @@ const Navbar = () => {
                 </Link>
                 <Link
                   to="/signup"
-                  className="px-4 py-1.5 rounded-xl text-xs font-bold bg-spotify-green text-black hover:bg-spotify-green-hover shadow-lg shadow-spotify-green/20 transition-all active:scale-95"
+                  className="px-4 py-1.5 rounded-xl text-xs font-bold bg-rose-500 text-white hover:bg-rose-400 shadow-lg shadow-rose-500/20 transition-all active:scale-95"
                 >
                   Sign Up
                 </Link>
@@ -186,13 +153,9 @@ const Navbar = () => {
         </div>
       </header>
 
-      {/* Modals */}
+      {/* Share Modal */}
       {showShareModal && room?.code && (
         <ShareRoomModal roomCode={room.code} roomName={room.name} onClose={() => setShowShareModal(false)} />
-      )}
-
-      {showDeviceModal && isHost && (
-        <DeviceModal onClose={() => setShowDeviceModal(false)} />
       )}
     </>
   );

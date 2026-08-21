@@ -68,9 +68,9 @@ export const ToastProvider = ({ children }) => {
           let iconColor = 'text-blue-400';
 
           if (toast.type === 'success') {
-            bg = 'bg-slate-900/95 border-spotify-green/40 text-slate-100';
+            bg = 'bg-slate-900/95 border-rose-500/40 text-slate-100';
             IconComponent = CheckCircle2;
-            iconColor = 'text-spotify-green';
+            iconColor = 'text-rose-400';
           } else if (toast.type === 'error') {
             bg = 'bg-red-950/90 border-red-500/40 text-red-100';
             IconComponent = AlertCircle;

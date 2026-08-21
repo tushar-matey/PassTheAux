@@ -7,18 +7,14 @@ import {
   Crown,
   Flame,
   Music,
-  Sparkles,
-  Clock,
-  User,
-  Radio
+  Sparkles
 } from 'lucide-react';
 
-const formatDuration = (ms) => {
-  if (!ms) return '0:00';
-  const totalSeconds = Math.floor(ms / 1000);
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+const formatDuration = (seconds) => {
+  if (!seconds || isNaN(seconds)) return '0:00';
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
 };
 
 const QueueList = () => {
@@ -29,13 +25,13 @@ const QueueList = () => {
 
   if (activeQueue.length === 0) {
     return (
-      <div className="w-full glass-panel rounded-2xl p-8 border border-white/10 text-center flex flex-col items-center justify-center gap-3">
+      <div className="w-full glass-panel rounded-3xl p-8 border border-white/10 text-center flex flex-col items-center justify-center gap-3">
         <div className="w-14 h-14 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-slate-500 shadow-inner">
-          <Music className="w-7 h-7 opacity-40 text-spotify-green" />
+          <Music className="w-7 h-7 opacity-40 text-rose-500" />
         </div>
         <div>
           <h3 className="font-display font-bold text-base text-white">
-            Queue is Hungry
+            Queue is Empty
           </h3>
           <p className="text-xs text-slate-400 mt-1 max-w-sm">
             Search for songs above to drop them into the aux queue. Everyone in the room can vote them to the top!
@@ -103,31 +99,31 @@ const QueueList = () => {
 
           return (
             <div
-              key={track._id || track.spotifyTrackId}
-              className={`flex items-center justify-between p-3 sm:p-3.5 rounded-xl border transition-all ${borderStyle}`}
+              key={track._id || track.youtubeVideoId}
+              className={`flex items-center justify-between p-3 sm:p-3.5 rounded-2xl border transition-all ${borderStyle}`}
             >
-              {/* Left: Rank, Album Art & Track Info */}
+              {/* Left: Rank, Thumbnail & Track Info */}
               <div className="flex items-center gap-3 min-w-0 flex-1">
                 {/* Rank Badge */}
                 <div className="flex-shrink-0">{rankBadge}</div>
 
-                {/* Album Art */}
+                {/* Thumbnail */}
                 <img
                   src={
-                    track.albumArt ||
-                    'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=150&q=80'
+                    track.thumbnailUrl ||
+                    `https://i.ytimg.com/vi/${track.youtubeVideoId}/hqdefault.jpg`
                   }
-                  alt={track.name}
-                  className="w-11 h-11 rounded-lg object-cover border border-white/10 flex-shrink-0 shadow-sm"
+                  alt={track.title}
+                  className="w-13 h-10 sm:w-14 sm:h-10 rounded-xl object-cover border border-white/10 flex-shrink-0 shadow-sm"
                 />
 
                 {/* Track Details */}
                 <div className="flex flex-col min-w-0 flex-1 pr-2">
                   <h4 className="font-semibold text-sm text-white truncate tracking-tight">
-                    {track.name}
+                    {track.title}
                   </h4>
                   <div className="flex items-center gap-2 text-xs text-slate-400 truncate">
-                    <span className="truncate">{track.artist}</span>
+                    <span className="truncate">{track.channelTitle || 'YouTube Music'}</span>
                     {track.addedBy?.name && (
                       <span className="hidden sm:inline text-[11px] text-slate-500 font-medium truncate">
                         • by {track.addedBy.name}
@@ -140,7 +136,7 @@ const QueueList = () => {
               {/* Right: Duration, Delete Button & Interactive Vote Pill */}
               <div className="flex items-center gap-2.5 flex-shrink-0">
                 <span className="text-xs font-mono text-slate-400 hidden md:inline">
-                  {formatDuration(track.durationMs)}
+                  {formatDuration(track.durationSec)}
                 </span>
 
                 {/* Delete / Remove button (Host or Adder) */}
@@ -160,13 +156,13 @@ const QueueList = () => {
                   disabled={!isAuthenticated}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs transition-all active:scale-95 ${
                     hasVoted
-                      ? 'bg-spotify-green text-black shadow-lg shadow-spotify-green/30 hover:bg-spotify-green-hover'
+                      ? 'bg-rose-500 text-white shadow-lg shadow-rose-500/30 hover:bg-rose-400'
                       : 'bg-white/10 hover:bg-white/20 text-white border border-white/10'
                   }`}
                   title={
                     hasVoted
                       ? 'Click to remove your vote'
-                      : 'Click to upvote this song'
+                      : 'Click to upvote this track'
                   }
                 >
                   <ThumbsUp
@@ -176,7 +172,7 @@ const QueueList = () => {
                   <span
                     className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
                       hasVoted
-                        ? 'bg-black/20 text-black font-extrabold'
+                        ? 'bg-black/20 text-white font-extrabold'
                         : 'bg-white/20 text-slate-200'
                     }`}
                   >

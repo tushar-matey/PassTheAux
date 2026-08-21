@@ -61,7 +61,7 @@ const ActiveMembers = () => {
               >
                 <div className="flex items-center gap-2.5 min-w-0">
                   <div className="relative">
-                    <div className="w-7 h-7 rounded-full bg-gradient-to-br from-cyber-purple/80 to-blue-600 flex items-center justify-center font-bold text-white shadow-sm">
+                    <div className="w-7 h-7 rounded-full bg-gradient-to-br from-cyber-purple/80 to-rose-600 flex items-center justify-center font-bold text-white shadow-sm">
                       {member.name?.charAt(0).toUpperCase()}
                     </div>
                     {member.isOnline && (
@@ -88,7 +88,7 @@ const ActiveMembers = () => {
       {/* Live Session Chat & Reactions */}
       <div className="glass-panel rounded-2xl p-4 sm:p-5 border border-white/10 shadow-xl space-y-3">
         <div className="flex items-center gap-2">
-          <MessageSquare className="w-4 h-4 text-spotify-green" />
+          <MessageSquare className="w-4 h-4 text-rose-400" />
           <h3 className="font-display font-bold text-sm sm:text-base text-white">
             Session Chat
           </h3>
@@ -103,7 +103,7 @@ const ActiveMembers = () => {
           ) : (
             chatMessages.map((msg) => (
               <div key={msg.id} className="text-xs">
-                <span className="font-bold text-spotify-green">
+                <span className="font-bold text-rose-400">
                   {msg.user?.name}:{' '}
                 </span>
                 <span className="text-slate-200">{msg.text}</span>
@@ -145,7 +145,7 @@ const ActiveMembers = () => {
           <button
             type="submit"
             disabled={!chatInput.trim()}
-            className="p-2 rounded-xl bg-spotify-green hover:bg-spotify-green-hover text-black font-bold disabled:opacity-40 transition-all active:scale-95"
+            className="p-2 rounded-xl bg-rose-500 hover:bg-rose-400 text-white font-bold disabled:opacity-40 transition-all active:scale-95 shadow-md shadow-rose-500/20"
             title="Send Message"
           >
             <Send className="w-3.5 h-3.5" />

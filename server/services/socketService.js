@@ -1,6 +1,7 @@
 import { Server } from 'socket.io';
 import Room from '../models/Room.js';
 import User from '../models/User.js';
+import playbackService from './playbackService.js';
 
 class SocketService {
   constructor() {
@@ -71,6 +72,51 @@ class SocketService {
         }
       });
 
+      // Host notifies that current YouTube video ended
+      socket.on('track-ended', async ({ roomCode, youtubeVideoId }) => {
+        try {
+          if (!roomCode) return;
+          const code = roomCode.toUpperCase();
+          const room = await Room.findOne({ code });
+          if (!room) return;
+
+          // Prevent race conditions: only advance if the ended track matches the currentTrack
+          if (
+            room.currentTrack &&
+            (!youtubeVideoId || room.currentTrack.youtubeVideoId === youtubeVideoId)
+          ) {
+            console.log(
+              `[Socket] Host client reported track-ended in room ${code}. Advancing to next highest-voted track...`
+            );
+            await playbackService.playNextTrack(code);
+          }
+        } catch (err) {
+          console.error('[Socket] track-ended error:', err);
+        }
+      });
+
+      // Host periodically broadcasts playback state & progress for listener sync
+      socket.on('playback-sync', ({ roomCode, progressSec, isPlaying, youtubeVideoId }) => {
+        if (!roomCode) return;
+        const code = roomCode.toUpperCase();
+        socket.to(code).emit('playback-sync', {
+          progressSec: typeof progressSec === 'number' ? progressSec : 0,
+          isPlaying: Boolean(isPlaying),
+          youtubeVideoId,
+          timestamp: Date.now()
+        });
+      });
+
+      // Host seeks in video -> broadcast seek position to all listeners
+      socket.on('seek-playback', ({ roomCode, progressSec }) => {
+        if (!roomCode) return;
+        const code = roomCode.toUpperCase();
+        socket.to(code).emit('seek-playback', {
+          progressSec: typeof progressSec === 'number' ? progressSec : 0,
+          timestamp: Date.now()
+        });
+      });
+
       // User explicitly leaves room
       socket.on('leave-room', async ({ roomCode, userId }) => {
         try {
@@ -107,7 +153,7 @@ class SocketService {
       });
     });
 
-    console.log('[Socket] Socket.IO server initialized');
+    console.log('[Socket] Socket.IO server initialized with YouTube playback sync');
   }
 
   async handleUserLeave(roomCode, userId, socketId) {
@@ -163,6 +209,12 @@ class SocketService {
   broadcastPlaybackState(roomCode, playbackState) {
     if (!this.io || !roomCode) return;
     this.io.to(roomCode.toUpperCase()).emit('playback-state', playbackState);
+  }
+
+  // Broadcast sync event directly from backend controller
+  broadcastPlaybackSync(roomCode, syncData) {
+    if (!this.io || !roomCode) return;
+    this.io.to(roomCode.toUpperCase()).emit('playback-sync', syncData);
   }
 }
 

@@ -1,6 +1,5 @@
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
-import spotifyService from '../services/spotifyService.js';
 
 // Helper to generate JWT
 const generateToken = (id) => {
@@ -50,9 +49,7 @@ export const register = async (req, res) => {
         _id: user._id,
         name: user.name,
         email: user.email,
-        isHost: user.isHost,
-        spotifyConnected: user.isSpotifyConnected(),
-        spotifyProfile: user.spotifyProfile
+        isHost: user.isHost
       }
     });
   } catch (error) {
@@ -94,9 +91,7 @@ export const login = async (req, res) => {
         _id: user._id,
         name: user.name,
         email: user.email,
-        isHost: user.isHost,
-        spotifyConnected: user.isSpotifyConnected(),
-        spotifyProfile: user.spotifyProfile
+        isHost: user.isHost
       }
     });
   } catch (error) {
@@ -123,220 +118,8 @@ export const getMe = async (req, res) => {
         _id: user._id,
         name: user.name,
         email: user.email,
-        isHost: user.isHost,
-        spotifyConnected: user.isSpotifyConnected(),
-        spotifyProfile: user.spotifyProfile,
-        hasSpotifyPremium: user.hasSpotifyPremium()
+        isHost: user.isHost
       }
-    });
-  } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
-  }
-};
-
-// @desc    Get Spotify OAuth Authorization URL
-// @route   GET /api/auth/spotify/login-url
-export const getSpotifyAuthUrl = async (req, res) => {
-  try {
-    // If user is logged in, include user ID in state to attach Spotify account
-    const state = req.user ? req.user._id.toString() : 'guest';
-    const authUrl = spotifyService.getAuthorizeUrl(state);
-
-    if (!authUrl) {
-      return res.status(400).json({
-        success: false,
-        message: 'Spotify API credentials are not configured in server environment variables.'
-      });
-    }
-
-    return res.json({
-      success: true,
-      authUrl
-    });
-  } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
-  }
-};
-
-// In-memory cache to prevent duplicate authorization code exchanges
-const processedCodes = new Map();
-
-// @desc    Handle Spotify OAuth callback
-// @route   GET /api/auth/spotify/callback
-export const spotifyCallback = async (req, res) => {
-  const { code, state, error } = req.query;
-  const clientUrl = (process.env.CLIENT_URL || 'http://localhost:5173').replace(/\/$/, '');
-
-  console.log('[Spotify Callback] Received callback with query:', {
-    hasCode: !!code,
-    state,
-    error
-  });
-
-  if (error || !code) {
-    console.error('[Spotify Callback] Error received from Spotify:', error);
-    return res.redirect(`${clientUrl}/auth/spotify-callback?error=${encodeURIComponent(error || 'Access denied by Spotify')}`);
-  }
-
-  // Idempotency check: prevent duplicate requests with the same code
-  if (processedCodes.has(code)) {
-    console.warn('[Spotify Callback] Code already processed or in-flight:', code.slice(0, 8));
-    const cached = processedCodes.get(code);
-    if (cached.jwtToken) {
-      return res.redirect(`${clientUrl}/auth/spotify-callback?token=${cached.jwtToken}&spotifyConnected=true`);
-    }
-    return res.redirect(`${clientUrl}/auth/spotify-callback?error=${encodeURIComponent('Authorization code was already used. Please try logging in again.')}`);
-  }
-
-  // Mark code as processing
-  processedCodes.set(code, { timestamp: Date.now(), inFlight: true });
-  // Clean up old codes after 5 minutes
-  setTimeout(() => processedCodes.delete(code), 300000);
-
-  try {
-    const tokenData = await spotifyService.exchangeCodeForTokens(code);
-
-    let spotifyProfile = null;
-    try {
-      spotifyProfile = await spotifyService.getUserProfile(tokenData.accessToken);
-    } catch (profileErr) {
-      console.warn('[Spotify Callback] Could not fetch Spotify profile from /v1/me (likely Dev Mode restriction), using fallback profile:', profileErr.message);
-      spotifyProfile = {
-        id: `spotify_${Date.now()}`,
-        display_name: 'Spotify Host',
-        email: null,
-        product: 'premium',
-        images: [],
-        uri: null
-      };
-    }
-
-    let user = null;
-
-    // If state contains a valid user ID, connect to that user
-    if (state && state !== 'guest') {
-      user = await User.findById(state);
-    }
-
-    // If user wasn't found by state, find by Spotify ID or email, or create new user
-    if (!user && spotifyProfile?.id) {
-      user = await User.findOne({
-        $or: [
-          { 'spotifyProfile.id': spotifyProfile.id },
-          ...(spotifyProfile.email ? [{ email: spotifyProfile.email.toLowerCase() }] : [])
-        ]
-      });
-    }
-
-    if (!user) {
-      // Create new user from Spotify profile
-      user = new User({
-        name: spotifyProfile.display_name || 'Spotify Listener',
-        email: spotifyProfile.email ? spotifyProfile.email.toLowerCase() : `spotify_${Date.now()}@passtheaux.app`,
-        password: Math.random().toString(36).slice(-10) // random placeholder password
-      });
-    }
-
-    // Save tokens and Spotify profile
-    user.spotifyAccessToken = tokenData.accessToken;
-    user.spotifyRefreshToken = tokenData.refreshToken || user.spotifyRefreshToken;
-    user.spotifyTokenExpiresAt = new Date(Date.now() + tokenData.expiresIn * 1000);
-    user.spotifyProfile = {
-      id: spotifyProfile.id || `spotify_${Date.now()}`,
-      displayName: spotifyProfile.display_name || user.name || 'Spotify Listener',
-      email: spotifyProfile.email || user.email,
-      product: spotifyProfile.product || 'premium',
-      images: spotifyProfile.images || [],
-      uri: spotifyProfile.uri || null
-    };
-    user.isHost = true;
-
-    await user.save();
-
-    const jwtToken = generateToken(user._id);
-
-    // Save token to idempotency cache
-    processedCodes.set(code, { timestamp: Date.now(), jwtToken });
-
-    console.log(`[Spotify Callback] Successfully authenticated Spotify user: ${user.name} (${user.email})`);
-
-    // Redirect to client callback route with token
-    return res.redirect(
-      `${clientUrl}/auth/spotify-callback?token=${jwtToken}&spotifyConnected=true`
-    );
-  } catch (err) {
-    console.error('[Spotify Callback] ❌ Callback processing failed:', err.message);
-    const displayError = err.message || 'Failed to authenticate with Spotify';
-    return res.redirect(
-      `${clientUrl}/auth/spotify-callback?error=${encodeURIComponent(displayError)}`
-    );
-  }
-};
-
-// @desc    Get fresh Spotify access token for Web Playback SDK
-// @route   GET /api/auth/spotify/token
-export const getSpotifyToken = async (req, res) => {
-  try {
-    const user = await User.findById(req.user._id).select(
-      '+spotifyAccessToken +spotifyRefreshToken'
-    );
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found' });
-    }
-
-    if (!user.spotifyRefreshToken && !user.spotifyAccessToken) {
-      return res.status(400).json({
-        success: false,
-        message: 'Spotify account not connected for this user.'
-      });
-    }
-
-    const accessToken = await spotifyService.getValidUserAccessToken(user);
-
-    if (!accessToken) {
-      return res.status(401).json({
-        success: false,
-        message: 'Failed to retrieve or refresh Spotify access token.'
-      });
-    }
-
-    return res.json({
-      success: true,
-      accessToken,
-      product: user.spotifyProfile?.product || 'free',
-      isPremium: user.hasSpotifyPremium() || user.spotifyProfile?.product === 'premium',
-      expiresAt: user.spotifyTokenExpiresAt
-    });
-  } catch (error) {
-    console.error('getSpotifyToken error:', error);
-    return res.status(500).json({ success: false, message: error.message });
-  }
-};
-
-// @desc    Disconnect Spotify account
-// @route   POST /api/auth/spotify/disconnect
-export const disconnectSpotify = async (req, res) => {
-  try {
-    const user = await User.findById(req.user._id);
-    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
-
-    user.spotifyAccessToken = null;
-    user.spotifyRefreshToken = null;
-    user.spotifyTokenExpiresAt = null;
-    user.spotifyProfile = {
-      id: null,
-      displayName: null,
-      email: null,
-      product: null,
-      images: [],
-      uri: null
-    };
-
-    await user.save();
-
-    return res.json({
-      success: true,
-      message: 'Spotify account disconnected successfully.'
     });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });

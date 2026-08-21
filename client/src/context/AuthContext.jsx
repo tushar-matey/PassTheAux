@@ -64,36 +64,7 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
   };
 
-  // Initiate Spotify OAuth login/connection
-  const connectSpotify = async () => {
-    try {
-      const data = await authApi.getSpotifyLoginUrl();
-      if (data.success && data.authUrl) {
-        window.location.href = data.authUrl;
-      } else {
-        throw new Error(data.message || 'Spotify login is not configured');
-      }
-    } catch (err) {
-      console.error('Failed to get Spotify OAuth URL:', err);
-      throw err;
-    }
-  };
-
-  // Disconnect Spotify
-  const disconnectSpotify = async () => {
-    await authApi.disconnectSpotify();
-    if (user) {
-      setUser({
-        ...user,
-        spotifyConnected: false,
-        spotifyProfile: null,
-        hasSpotifyPremium: false,
-        isHost: false
-      });
-    }
-  };
-
-  // Set auth token directly (used after OAuth callback redirect)
+  // Set auth token directly
   const setAuthToken = (newToken) => {
     localStorage.setItem('passtheaux_token', newToken);
     setToken(newToken);
@@ -121,8 +92,6 @@ export const AuthProvider = ({ children }) => {
         login,
         register,
         logout,
-        connectSpotify,
-        disconnectSpotify,
         setAuthToken,
         refreshUser
       }}

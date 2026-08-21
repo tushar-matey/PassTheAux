@@ -29,7 +29,7 @@ const ShareRoomModal = ({ roomCode, roomName, onClose }) => {
 
         {/* Title */}
         <div className="text-center space-y-1">
-          <div className="inline-flex p-3 rounded-2xl bg-spotify-green/10 text-spotify-green mb-2 border border-spotify-green/20">
+          <div className="inline-flex p-3 rounded-2xl bg-rose-500/10 text-rose-400 mb-2 border border-rose-500/20">
             <Share2 className="w-6 h-6" />
           </div>
           <h3 className="font-display font-black text-xl text-white">
@@ -45,7 +45,7 @@ const ShareRoomModal = ({ roomCode, roomName, onClose }) => {
           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">
             Room Code
           </span>
-          <div className="font-mono font-black text-3xl sm:text-4xl text-spotify-green tracking-widest select-all">
+          <div className="font-mono font-black text-3xl sm:text-4xl text-rose-400 tracking-widest select-all">
             {roomCode}
           </div>
         </div>
@@ -69,7 +69,7 @@ const ShareRoomModal = ({ roomCode, roomName, onClose }) => {
         {/* Copy Link Button */}
         <button
           onClick={handleCopyLink}
-          className="w-full py-3.5 px-4 rounded-2xl bg-spotify-green hover:bg-spotify-green-hover text-black font-bold text-sm shadow-lg shadow-spotify-green/25 flex items-center justify-center gap-2 transition-all active:scale-95"
+          className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-rose-500 to-red-600 hover:from-rose-400 hover:to-red-500 text-white font-bold text-sm shadow-lg shadow-rose-500/25 flex items-center justify-center gap-2 transition-all active:scale-95"
         >
           {copied ? (
             <>

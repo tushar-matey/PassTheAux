@@ -6,7 +6,7 @@
   body {
     background-color: #080b12;
     background-image: 
-      radial-gradient(at 0% 0%, rgba(29, 185, 84, 0.08) 0px, transparent 50%),
+      radial-gradient(at 0% 0%, rgba(244, 63, 94, 0.08) 0px, transparent 50%),
       radial-gradient(at 100% 0%, rgba(139, 92, 246, 0.08) 0px, transparent 50%),
       radial-gradient(at 50% 100%, rgba(6, 182, 212, 0.05) 0px, transparent 50%);
     background-attachment: fixed;
@@ -28,9 +28,9 @@
 
 .glass-panel-hover:hover {
   background: rgba(26, 34, 52, 0.85);
-  border-color: rgba(29, 185, 84, 0.3);
+  border-color: rgba(244, 63, 94, 0.3);
   transform: translateY(-2px);
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 0 15px rgba(29, 185, 84, 0.1);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 0 15px rgba(244, 63, 94, 0.1);
 }
 
 .glass-input {
@@ -42,8 +42,8 @@
 
 .glass-input:focus {
   outline: none;
-  border-color: #1DB954;
-  box-shadow: 0 0 0 2px rgba(29, 185, 84, 0.25);
+  border-color: #f43f5e;
+  box-shadow: 0 0 0 2px rgba(244, 63, 94, 0.25);
   background: rgba(17, 24, 39, 0.95);
 }
 
@@ -63,14 +63,14 @@
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(29, 185, 84, 0.5);
+  background: rgba(244, 63, 94, 0.5);
 }
 
 /* Equalizer Bars Animation */
 .equalizer-bar {
   display: inline-block;
   width: 3px;
-  background-color: #1DB954;
+  background-color: #f43f5e;
   border-radius: 9999px;
   animation: equalize 1s ease-in-out infinite alternate;
 }
@@ -95,8 +95,8 @@
 }
 
 /* Glow effects */
-.glow-spotify {
-  box-shadow: 0 0 20px rgba(29, 185, 84, 0.35);
+.glow-rose {
+  box-shadow: 0 0 20px rgba(244, 63, 94, 0.35);
 }
 
 .glow-purple {

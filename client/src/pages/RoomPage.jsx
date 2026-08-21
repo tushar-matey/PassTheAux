@@ -15,7 +15,7 @@ import {
   Loader2,
   AlertCircle,
   Sparkles,
-  Crown
+  Music
 } from 'lucide-react';
 
 const RoomPage = () => {
@@ -37,7 +37,7 @@ const RoomPage = () => {
   if (isLoadingRoom && !room) {
     return (
       <div className="min-h-[calc(100vh-4rem)] flex flex-col items-center justify-center gap-4">
-        <Loader2 className="w-10 h-10 text-spotify-green animate-spin" />
+        <Loader2 className="w-10 h-10 text-rose-500 animate-spin" />
         <p className="text-sm font-semibold text-slate-300">
           Entering Aux Session {code}...
         </p>
@@ -59,7 +59,7 @@ const RoomPage = () => {
         </p>
         <button
           onClick={() => navigate('/')}
-          className="px-6 py-2.5 rounded-xl bg-spotify-green hover:bg-spotify-green-hover text-black font-bold text-sm transition-all"
+          className="px-6 py-2.5 rounded-xl bg-rose-500 hover:bg-rose-400 text-white font-bold text-sm transition-all shadow-lg shadow-rose-500/20"
         >
           Back to Home
         </button>
@@ -69,7 +69,7 @@ const RoomPage = () => {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-      {/* Top Now Playing Bar Hero */}
+      {/* Top Now Playing Bar Hero (with Embedded YouTube Player) */}
       <NowPlayingBar />
 
       {/* Mobile Tab Navigation (visible on small screens) */}
@@ -78,7 +78,7 @@ const RoomPage = () => {
           onClick={() => setActiveTab('search')}
           className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition-all ${
             activeTab === 'search'
-              ? 'bg-spotify-green text-black shadow-md'
+              ? 'bg-rose-500 text-white shadow-md'
               : 'text-slate-400 hover:text-white'
           }`}
         >
@@ -90,7 +90,7 @@ const RoomPage = () => {
           onClick={() => setActiveTab('queue')}
           className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition-all ${
             activeTab === 'queue'
-              ? 'bg-spotify-green text-black shadow-md'
+              ? 'bg-rose-500 text-white shadow-md'
               : 'text-slate-400 hover:text-white'
           }`}
         >
@@ -102,7 +102,7 @@ const RoomPage = () => {
           onClick={() => setActiveTab('members')}
           className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition-all ${
             activeTab === 'members'
-              ? 'bg-spotify-green text-black shadow-md'
+              ? 'bg-rose-500 text-white shadow-md'
               : 'text-slate-400 hover:text-white'
           }`}
         >
@@ -114,7 +114,7 @@ const RoomPage = () => {
           onClick={() => setActiveTab('history')}
           className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition-all ${
             activeTab === 'history'
-              ? 'bg-spotify-green text-black shadow-md'
+              ? 'bg-rose-500 text-white shadow-md'
               : 'text-slate-400 hover:text-white'
           }`}
         >
@@ -134,15 +134,15 @@ const RoomPage = () => {
           <div className="glass-panel rounded-3xl p-5 sm:p-6 border border-white/10 shadow-2xl space-y-5">
             <div className="flex items-center justify-between border-b border-white/5 pb-4">
               <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-xl bg-spotify-green/10 text-spotify-green">
+                <div className="p-2 rounded-xl bg-rose-500/10 text-rose-400">
                   <Search className="w-5 h-5" />
                 </div>
                 <div>
                   <h2 className="font-display font-black text-lg text-white">
-                    Spotify Track Search
+                    YouTube Music Search
                   </h2>
                   <p className="text-xs text-slate-400">
-                    Search any track to vote for queued songs or add new ones
+                    Search any track or video to vote for queued songs or add new ones
                   </p>
                 </div>
               </div>
@@ -166,23 +166,23 @@ const RoomPage = () => {
                 {history.map((t, i) => (
                   <div
                     key={t._id || i}
-                    className="flex items-center justify-between p-2.5 rounded-xl bg-white/5 border border-white/5 text-xs"
+                    className="flex items-center justify-between p-2.5 rounded-2xl bg-white/5 border border-white/5 text-xs"
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       <img
                         src={
-                          t.albumArt ||
-                          'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=100&q=80'
+                          t.thumbnailUrl ||
+                          `https://i.ytimg.com/vi/${t.youtubeVideoId}/hqdefault.jpg`
                         }
-                        alt={t.name}
-                        className="w-9 h-9 rounded-lg object-cover"
+                        alt={t.title}
+                        className="w-10 h-8 rounded-lg object-cover"
                       />
                       <div className="min-w-0">
                         <h5 className="font-semibold text-white truncate">
-                          {t.name}
+                          {t.title}
                         </h5>
                         <p className="text-[11px] text-slate-400 truncate">
-                          {t.artist}
+                          {t.channelTitle || 'YouTube Music'}
                         </p>
                       </div>
                     </div>

@@ -1,6 +1,6 @@
 import Room from '../models/Room.js';
 import playbackService from '../services/playbackService.js';
-import spotifyService from '../services/spotifyService.js';
+import socketService from '../services/socketService.js';
 
 // @desc    Toggle Play/Pause for room
 // @route   POST /api/player/:code/toggle
@@ -37,63 +37,38 @@ export const skipTrack = async (req, res) => {
   }
 };
 
-// @desc    Get host's active Spotify devices
-// @route   GET /api/player/devices
-export const getHostDevices = async (req, res) => {
-  try {
-    const result = await spotifyService.getDevices(req.user);
-    if (!result.success && result.code === 'PREMIUM_REQUIRED') {
-      return res.status(403).json(result);
-    }
-    if (!result.success && result.code === 'NOT_CONNECTED') {
-      return res.status(400).json(result);
-    }
-    return res.json(result);
-  } catch (error) {
-    return res.status(500).json({ success: false, code: 'SERVER_ERROR', message: error.message });
-  }
-};
-
-// @desc    Select active Spotify playback device for room
-// @route   POST /api/player/:code/device
-export const setRoomDevice = async (req, res) => {
+// @desc    Host syncs current YouTube playback progress to all clients
+// @route   POST /api/player/:code/sync
+export const syncPlayback = async (req, res) => {
   try {
     const { code } = req.params;
-    const { deviceId, deviceName } = req.body;
-
-    if (!deviceId) {
-      return res.status(400).json({ success: false, message: 'deviceId is required' });
-    }
+    const { progressSec, isPlaying } = req.body;
 
     const room = await Room.findOne({ code: code.toUpperCase() });
     if (!room) return res.status(404).json({ success: false, message: 'Room not found' });
 
-    if (room.hostUserId.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ success: false, message: 'Only room host can select device' });
+    const isHost = room.hostUserId.toString() === req.user._id.toString();
+    if (!isHost) {
+      return res.status(403).json({ success: false, message: 'Only host can broadcast playback sync' });
     }
 
-    room.activeDeviceId = deviceId;
-    room.activeDeviceName = deviceName || 'Spotify Device';
-    await room.save();
-
-    // Transfer Spotify playback to make it the active device
-    let transferSuccess = false;
-    let transferError = null;
-    try {
-      await spotifyService.transferPlayback(req.user, deviceId, false);
-      transferSuccess = true;
-    } catch (e) {
-      transferError = e.message;
-      console.warn('[PlayerController] Transfer device warning:', e.message);
+    if (room.currentTrack) {
+      if (typeof isPlaying === 'boolean') room.currentTrack.isPlaying = isPlaying;
+      if (typeof progressSec === 'number') {
+        room.currentTrack.progressSec = progressSec;
+        room.currentTrack.progressMs = progressSec * 1000;
+      }
+      room.currentTrack.lastSyncedAt = new Date();
+      await room.save();
     }
 
-    return res.json({
-      success: true,
-      activeDeviceId: room.activeDeviceId,
-      activeDeviceName: room.activeDeviceName,
-      transferred: transferSuccess,
-      transferMessage: transferError
+    socketService.broadcastPlaybackSync(room.code, {
+      isPlaying: typeof isPlaying === 'boolean' ? isPlaying : room.currentTrack?.isPlaying,
+      progressSec: typeof progressSec === 'number' ? progressSec : room.currentTrack?.progressSec,
+      youtubeVideoId: room.currentTrack?.youtubeVideoId
     });
+
+    return res.json({ success: true });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -109,9 +84,7 @@ export const getPlaybackStatus = async (req, res) => {
 
     return res.json({
       success: true,
-      currentTrack: room.currentTrack,
-      activeDeviceId: room.activeDeviceId,
-      activeDeviceName: room.activeDeviceName
+      currentTrack: room.currentTrack
     });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });

@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_URL = import.meta.env.VITE_API_URL || 'https://passtheaux.onrender.com/api';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 const api = axios.create({
   baseURL: API_URL,
@@ -38,10 +38,7 @@ api.interceptors.response.use(
 export const authApi = {
   register: (data) => api.post('/auth/register', data),
   login: (data) => api.post('/auth/login', data),
-  getMe: () => api.get('/auth/me'),
-  getSpotifyToken: () => api.get('/auth/spotify/token'),
-  getSpotifyLoginUrl: () => api.get('/auth/spotify/login-url'),
-  disconnectSpotify: () => api.post('/auth/spotify/disconnect')
+  getMe: () => api.get('/auth/me')
 };
 
 // Rooms API calls
@@ -76,9 +73,8 @@ export const playerApi = {
   getStatus: (code) => api.get(`/player/${code}/status`),
   togglePlay: (code, play) => api.post(`/player/${code}/toggle`, { play }),
   skipTrack: (code) => api.post(`/player/${code}/skip`),
-  getHostDevices: () => api.get('/player/devices'),
-  setRoomDevice: (code, deviceId, deviceName) =>
-    api.post(`/player/${code}/device`, { deviceId, deviceName })
+  syncPlayback: (code, progressSec, isPlaying) =>
+    api.post(`/player/${code}/sync`, { progressSec, isPlaying })
 };
 
 export default api;

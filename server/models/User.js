@@ -25,28 +25,6 @@ const userSchema = new mongoose.Schema(
       minlength: [6, 'Password must be at least 6 characters'],
       select: false // Exclude from normal queries by default
     },
-    spotifyAccessToken: {
-      type: String,
-      default: null,
-      select: false
-    },
-    spotifyRefreshToken: {
-      type: String,
-      default: null,
-      select: false
-    },
-    spotifyTokenExpiresAt: {
-      type: Date,
-      default: null
-    },
-    spotifyProfile: {
-      id: { type: String, default: null },
-      displayName: { type: String, default: null },
-      email: { type: String, default: null },
-      product: { type: String, default: null }, // 'premium', 'free', etc.
-      images: [{ type: String }],
-      uri: { type: String, default: null }
-    },
     isHost: {
       type: Boolean,
       default: false
@@ -71,16 +49,6 @@ userSchema.pre('save', async function (next) {
 userSchema.methods.matchPassword = async function (enteredPassword) {
   if (!this.password) return false;
   return await bcrypt.compare(enteredPassword, this.password);
-};
-
-// Check if user has connected Spotify
-userSchema.methods.isSpotifyConnected = function () {
-  return !!(this.spotifyProfile && this.spotifyProfile.id);
-};
-
-// Check if Spotify user has Premium
-userSchema.methods.hasSpotifyPremium = function () {
-  return this.spotifyProfile?.product === 'premium';
 };
 
 const User = mongoose.model('User', userSchema);

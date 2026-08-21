@@ -49,23 +49,22 @@ export const createRoom = async (req, res) => {
       ],
       queue: [],
       currentTrack: {
-        spotifyTrackId: null,
-        name: null,
-        artist: null,
-        albumArt: '',
-        albumName: '',
+        youtubeVideoId: null,
+        title: null,
+        channelTitle: null,
+        thumbnailUrl: '',
+        durationSec: 0,
         durationMs: 0,
-        uri: null,
-        previewUrl: null,
         startedAt: null,
         isPlaying: false,
+        progressSec: 0,
         progressMs: 0
       }
     });
 
     const populatedRoom = await Room.findById(room._id).populate(
       'hostUserId',
-      'name email spotifyProfile isHost'
+      'name email isHost'
     );
 
     return res.status(201).json({
@@ -91,7 +90,7 @@ export const joinRoom = async (req, res) => {
     const cleanCode = code.trim().toUpperCase();
     const room = await Room.findOne({ code: cleanCode }).populate(
       'hostUserId',
-      'name email spotifyProfile isHost'
+      'name email isHost'
     );
 
     if (!room) {
@@ -140,7 +139,7 @@ export const getRoom = async (req, res) => {
 
     const room = await Room.findOne({ code: cleanCode }).populate(
       'hostUserId',
-      'name email spotifyProfile isHost'
+      'name email isHost'
     );
 
     if (!room) {
@@ -165,8 +164,6 @@ export const getRoom = async (req, res) => {
         currentTrack: room.currentTrack,
         history: room.history.slice(0, 20),
         settings: room.settings,
-        activeDeviceId: room.activeDeviceId,
-        activeDeviceName: room.activeDeviceName,
         createdAt: room.createdAt
       }
     });

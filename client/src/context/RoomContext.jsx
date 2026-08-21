@@ -10,7 +10,6 @@ import { roomApi, queueApi, searchApi, playerApi } from '../services/api';
 import { getSocket, joinSocketRoom, leaveSocketRoom } from '../services/socket';
 import { useAuth } from './AuthContext';
 import { useToast } from './ToastContext';
-import useSpotifyWebPlayer from '../hooks/useSpotifyWebPlayer';
 import confetti from 'canvas-confetti';
 
 const RoomContext = createContext(null);
@@ -24,8 +23,6 @@ export const RoomProvider = ({ children }) => {
   const [currentTrack, setCurrentTrack] = useState(null);
   const [members, setMembers] = useState([]);
   const [history, setHistory] = useState([]);
-  const [activeDeviceId, setActiveDeviceId] = useState(null);
-  const [activeDeviceName, setActiveDeviceName] = useState(null);
 
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
@@ -36,6 +33,10 @@ export const RoomProvider = ({ children }) => {
   const [isLoadingRoom, setIsLoadingRoom] = useState(false);
   const [playbackProgress, setPlaybackProgress] = useState(0);
 
+  // Incoming sync state from host for non-host player synchronization
+  const [remoteSyncEvent, setRemoteSyncEvent] = useState(null);
+  const [remoteSeekEvent, setRemoteSeekEvent] = useState(null);
+
   // Chat / Live feed
   const [chatMessages, setChatMessages] = useState([]);
 
@@ -45,65 +46,19 @@ export const RoomProvider = ({ children }) => {
     (room.hostUserId?._id === user._id || room.hostUserId === user._id)
   );
 
-  const setPlaybackDevice = useCallback(async (deviceId, deviceName) => {
-    if (!room?.code) return;
-    try {
-      console.log(`[RoomContext] Setting active playback device: ${deviceName} (${deviceId})...`);
-      const data = await playerApi.setRoomDevice(room.code, deviceId, deviceName);
-      if (data.success) {
-        setActiveDeviceId(deviceId);
-        setActiveDeviceName(deviceName);
-        toastSuccess(`Connected to ${deviceName}`);
-      }
-    } catch (err) {
-      console.error('[RoomContext] Failed to set playback device:', err.message);
-      toastError(err.message, 'Device Error');
-    }
-  }, [room?.code, toastSuccess, toastError]);
-
-  const handleDeviceReady = useCallback((deviceId, deviceName) => {
-    console.log('[RoomContext] Web Playback SDK is ready on device:', deviceId);
-    if (isHost) {
-      setPlaybackDevice(deviceId, deviceName);
-    }
-  }, [isHost, setPlaybackDevice]);
-
-  const handlePlayerError = useCallback((err) => {
-    if (err.type === 'PREMIUM_REQUIRED') {
-      toastError(err.message, 'Spotify Premium Required');
-    } else if (err.type === 'AUTH_ERROR') {
-      toastError(err.message, 'Spotify Auth Error');
-    }
-  }, [toastError]);
-
-  // Hook for Spotify Web Playback SDK
-  const {
-    player: spotifyPlayer,
-    webDeviceId,
-    isPlayerReady: isWebPlayerReady,
-    playerError: webPlayerError,
-    isPremium,
-    reconnectPlayer
-  } = useSpotifyWebPlayer({
-    isHost,
-    spotifyConnected: user?.spotifyConnected,
-    onDeviceReady: handleDeviceReady,
-    onPlayerError: handlePlayerError
-  });
-
-  // Progress bar sync timer
+  // Progress timer for local UI bar
   useEffect(() => {
     let interval = null;
 
-    if (currentTrack && currentTrack.isPlaying && currentTrack.durationMs > 0) {
+    if (currentTrack && currentTrack.isPlaying && currentTrack.durationSec > 0) {
       interval = setInterval(() => {
         if (!currentTrack.startedAt) return;
-        const elapsed = Date.now() - new Date(currentTrack.startedAt).getTime();
-        const clamped = Math.min(elapsed, currentTrack.durationMs);
+        const elapsedSec = (Date.now() - new Date(currentTrack.startedAt).getTime()) / 1000;
+        const clamped = Math.min(elapsedSec, currentTrack.durationSec);
         setPlaybackProgress(clamped);
       }, 500);
     } else if (currentTrack && !currentTrack.isPlaying) {
-      setPlaybackProgress(currentTrack.progressMs || 0);
+      setPlaybackProgress(currentTrack.progressSec || 0);
     } else {
       setPlaybackProgress(0);
     }
@@ -127,7 +82,7 @@ export const RoomProvider = ({ children }) => {
       setSearchResults((prev) =>
         prev.map((item) => {
           const inQ = (newQueue || []).find(
-            (q) => q.spotifyTrackId === item.spotifyTrackId
+            (q) => q.youtubeVideoId === item.youtubeVideoId
           );
           if (inQ) {
             const hasUserVoted = user
@@ -168,16 +123,16 @@ export const RoomProvider = ({ children }) => {
       setCurrentTrack(newTrack);
       if (newQueue) setQueue(newQueue);
 
-      if (newTrack?.name) {
-        toastMusic(`Now Playing: ${newTrack.name} by ${newTrack.artist}`);
-        // Delightful celebratory confetti for the promoted track
+      if (newTrack?.title) {
+        toastMusic(`Now Playing: ${newTrack.title}`);
+        // Celebratory confetti for the newly promoted track
         try {
           confetti({
             particleCount: 40,
             spread: 60,
             origin: { y: 0.85 }
           });
-        } catch (e) { }
+        } catch (e) {}
       }
     };
 
@@ -188,13 +143,29 @@ export const RoomProvider = ({ children }) => {
       } else {
         setCurrentTrack((prev) => (prev ? { ...prev, isPlaying: state.isPlaying } : null));
       }
-      if (typeof state.progressMs === 'number') {
-        setPlaybackProgress(state.progressMs);
+      if (typeof state.progressSec === 'number') {
+        setPlaybackProgress(state.progressSec);
+      }
+    };
+
+    // Live Playback Sync Event (from Host player)
+    const handlePlaybackSync = (syncData) => {
+      setRemoteSyncEvent(syncData);
+      if (typeof syncData.progressSec === 'number') {
+        setPlaybackProgress(syncData.progressSec);
+      }
+    };
+
+    // Live Seek Event (from Host player)
+    const handleSeekPlayback = (seekData) => {
+      setRemoteSeekEvent(seekData);
+      if (typeof seekData.progressSec === 'number') {
+        setPlaybackProgress(seekData.progressSec);
       }
     };
 
     // Live Members Updated Event
-    const handleMembersUpdated = ({ members: newMembers, joinedMember, leftMemberId }) => {
+    const handleMembersUpdated = ({ members: newMembers, joinedMember }) => {
       setMembers(newMembers || []);
       if (joinedMember && joinedMember.userId !== user?._id) {
         toastInfo(`${joinedMember.name} joined the session!`, 'New Listener');
@@ -210,6 +181,8 @@ export const RoomProvider = ({ children }) => {
     socket.on('vote-updated', handleVoteUpdated);
     socket.on('track-changed', handleTrackChanged);
     socket.on('playback-state', handlePlaybackState);
+    socket.on('playback-sync', handlePlaybackSync);
+    socket.on('seek-playback', handleSeekPlayback);
     socket.on('members-updated', handleMembersUpdated);
     socket.on('chat-message', handleChatMessage);
 
@@ -218,11 +191,52 @@ export const RoomProvider = ({ children }) => {
       socket.off('vote-updated', handleVoteUpdated);
       socket.off('track-changed', handleTrackChanged);
       socket.off('playback-state', handlePlaybackState);
+      socket.off('playback-sync', handlePlaybackSync);
+      socket.off('seek-playback', handleSeekPlayback);
       socket.off('members-updated', handleMembersUpdated);
       socket.off('chat-message', handleChatMessage);
       leaveSocketRoom(room.code, user?._id);
     };
   }, [room?.code, user, toastMusic, toastInfo]);
+
+  // Host notifies server when current YouTube video ends
+  const notifyTrackEnded = useCallback(
+    (youtubeVideoId) => {
+      if (!room?.code || !isHost) return;
+      const socket = getSocket();
+      console.log('[RoomContext] Emitting track-ended for video:', youtubeVideoId);
+      socket.emit('track-ended', { roomCode: room.code, youtubeVideoId });
+    },
+    [room?.code, isHost]
+  );
+
+  // Host broadcasts playback sync periodically
+  const broadcastPlaybackSync = useCallback(
+    (progressSec, isPlaying, youtubeVideoId) => {
+      if (!room?.code || !isHost) return;
+      const socket = getSocket();
+      socket.emit('playback-sync', {
+        roomCode: room.code,
+        progressSec,
+        isPlaying,
+        youtubeVideoId
+      });
+    },
+    [room?.code, isHost]
+  );
+
+  // Host broadcasts seek position
+  const broadcastSeek = useCallback(
+    (progressSec) => {
+      if (!room?.code || !isHost) return;
+      const socket = getSocket();
+      socket.emit('seek-playback', {
+        roomCode: room.code,
+        progressSec
+      });
+    },
+    [room?.code, isHost]
+  );
 
   // Load Room Data
   const loadRoom = async (code) => {
@@ -236,8 +250,6 @@ export const RoomProvider = ({ children }) => {
         setCurrentTrack(data.room.currentTrack || null);
         setMembers(data.room.members || []);
         setHistory(data.room.history || []);
-        setActiveDeviceId(data.room.activeDeviceId || null);
-        setActiveDeviceName(data.room.activeDeviceName || null);
         return data.room;
       }
     } catch (err) {
@@ -285,7 +297,7 @@ export const RoomProvider = ({ children }) => {
     }
   };
 
-  // Search Spotify Tracks (proxies Spotify API and integrates with current room queue)
+  // Search YouTube Tracks
   const searchTracks = useCallback(
     async (query) => {
       setSearchQuery(query);
@@ -313,29 +325,26 @@ export const RoomProvider = ({ children }) => {
     if (!room?.code) return;
     try {
       const data = await queueApi.addToQueue(room.code, {
-        spotifyTrackId: track.spotifyTrackId,
-        name: track.name,
-        artist: track.artist,
-        albumArt: track.albumArt,
-        albumName: track.albumName,
-        durationMs: track.durationMs,
-        uri: track.uri,
-        previewUrl: track.previewUrl
+        youtubeVideoId: track.youtubeVideoId,
+        title: track.title,
+        channelTitle: track.channelTitle,
+        thumbnailUrl: track.thumbnailUrl,
+        durationSec: track.durationSec
       });
 
       if (data.success) {
-        toastSuccess(`Added "${track.name}" to queue with your vote!`);
+        toastSuccess(`Added "${track.title}" to queue with your vote!`);
 
         // Update search results item state instantly
         setSearchResults((prev) =>
           prev.map((item) =>
-            item.spotifyTrackId === track.spotifyTrackId
+            item.youtubeVideoId === track.youtubeVideoId
               ? {
-                ...item,
-                inQueue: true,
-                userVoted: true,
-                votesCount: (item.votesCount || 0) + 1
-              }
+                  ...item,
+                  inQueue: true,
+                  userVoted: true,
+                  votesCount: (item.votesCount || 0) + 1
+                }
               : item
           )
         );
@@ -348,13 +357,13 @@ export const RoomProvider = ({ children }) => {
   };
 
   // Toggle Vote on Queued Track
-  const toggleVote = async (trackIdOrSpotifyId) => {
+  const toggleVote = async (trackIdOrYoutubeId) => {
     if (!room?.code) return;
     try {
-      const data = await queueApi.toggleVote(room.code, trackIdOrSpotifyId);
+      const data = await queueApi.toggleVote(room.code, trackIdOrYoutubeId);
       if (data.success) {
         if (data.userVoted) {
-          toastSuccess('Upvoted song!', 'Vote Recorded');
+          toastSuccess('Upvoted track!', 'Vote Recorded');
         } else {
           toastInfo('Removed vote', 'Vote Updated');
         }
@@ -362,13 +371,13 @@ export const RoomProvider = ({ children }) => {
         // Update local search results state
         setSearchResults((prev) =>
           prev.map((item) =>
-            item.spotifyTrackId === trackIdOrSpotifyId ||
-              item.queueTrackId === trackIdOrSpotifyId
+            item.youtubeVideoId === trackIdOrYoutubeId ||
+            item.queueTrackId === trackIdOrYoutubeId
               ? {
-                ...item,
-                userVoted: data.userVoted,
-                votesCount: data.voteCount
-              }
+                  ...item,
+                  userVoted: data.userVoted,
+                  votesCount: data.voteCount
+                }
               : item
           )
         );
@@ -432,18 +441,12 @@ export const RoomProvider = ({ children }) => {
         isHost,
         isLoadingRoom,
         playbackProgress,
-        activeDeviceId,
-        activeDeviceName,
+        remoteSyncEvent,
+        remoteSeekEvent,
         searchQuery,
         searchResults,
         searchLoading,
         chatMessages,
-        spotifyPlayer,
-        webDeviceId,
-        isWebPlayerReady,
-        webPlayerError,
-        isPremium,
-        reconnectPlayer,
         loadRoom,
         createRoom,
         joinRoom,
@@ -453,7 +456,9 @@ export const RoomProvider = ({ children }) => {
         removeFromQueue,
         togglePlay,
         skipTrack,
-        setPlaybackDevice
+        notifyTrackEnded,
+        broadcastPlaybackSync,
+        broadcastSeek
       }}
     >
       {children}

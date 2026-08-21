@@ -25,26 +25,23 @@ export const getQueue = async (req, res) => {
   }
 };
 
-// @desc    Add a song to room queue (with 1 auto-vote from adder)
+// @desc    Add a YouTube song/video to room queue (with 1 auto-vote from adder)
 // @route   POST /api/rooms/:code/queue
 export const addToQueue = async (req, res) => {
   try {
     const { code } = req.params;
     const {
-      spotifyTrackId,
-      name,
-      artist,
-      albumArt,
-      albumName,
-      durationMs,
-      uri,
-      previewUrl
+      youtubeVideoId,
+      title,
+      channelTitle,
+      thumbnailUrl,
+      durationSec
     } = req.body;
 
-    if (!spotifyTrackId || !name || !artist || !uri) {
+    if (!youtubeVideoId || !title) {
       return res.status(400).json({
         success: false,
-        message: 'Missing track details (spotifyTrackId, name, artist, uri required).'
+        message: 'Missing track details (youtubeVideoId and title required).'
       });
     }
 
@@ -58,11 +55,11 @@ export const addToQueue = async (req, res) => {
 
     // Check if song is already in active queue
     const existingIndex = room.queue.findIndex(
-      (t) => !t.played && t.spotifyTrackId === spotifyTrackId
+      (t) => !t.played && t.youtubeVideoId === youtubeVideoId
     );
 
     if (existingIndex >= 0) {
-      // If already in queue, toggle vote for this user instead of duplicating!
+      // If already in queue, toggle vote for this user instead of duplicating
       const existingTrack = room.queue[existingIndex];
       const hasVoted = existingTrack.votes.some(
         (v) => v.userId.toString() === userId.toString()
@@ -84,16 +81,16 @@ export const addToQueue = async (req, res) => {
       });
     }
 
+    const durSec = Number(durationSec) || 0;
+
     // Create new track subdocument
     const newTrack = {
-      spotifyTrackId,
-      name,
-      artist,
-      albumArt: albumArt || '',
-      albumName: albumName || '',
-      durationMs: durationMs || 180000,
-      uri,
-      previewUrl: previewUrl || null,
+      youtubeVideoId,
+      title,
+      channelTitle: channelTitle || 'YouTube Music',
+      thumbnailUrl: thumbnailUrl || `https://i.ytimg.com/vi/${youtubeVideoId}/hqdefault.jpg`,
+      durationSec: durSec,
+      durationMs: durSec * 1000,
       addedBy: {
         userId,
         name: userName
@@ -116,13 +113,13 @@ export const addToQueue = async (req, res) => {
     // If no song is currently playing, start playing this song immediately!
     const isCurrentlyPlaying =
       room.currentTrack &&
-      room.currentTrack.spotifyTrackId &&
+      room.currentTrack.youtubeVideoId &&
       room.currentTrack.isPlaying;
 
     if (!isCurrentlyPlaying && room.settings?.autoPlay !== false) {
-      console.log(`[QueueController] Room ${room.code} is idle. Auto-starting first track.`);
+      console.log(`[QueueController] Room ${room.code} is idle. Auto-starting first YouTube track.`);
       const playResult = await playbackService.playNextTrack(room.code, room.hostUserId);
-      sortedQueue = playResult.queue;
+      sortedQueue = playResult?.queue || sortedQueue;
     } else {
       socketService.broadcastQueueUpdated(room.code, sortedQueue);
     }
@@ -150,11 +147,11 @@ export const toggleVote = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Room not found' });
     }
 
-    // Find track by _id or spotifyTrackId
+    // Find track by _id or youtubeVideoId
     let track = room.queue.id(trackId);
     if (!track) {
       track = room.queue.find(
-        (t) => !t.played && t.spotifyTrackId === trackId
+        (t) => !t.played && t.youtubeVideoId === trackId
       );
     }
 
@@ -215,7 +212,7 @@ export const removeFromQueue = async (req, res) => {
 
     let track = room.queue.id(trackId);
     if (!track) {
-      track = room.queue.find((t) => !t.played && t.spotifyTrackId === trackId);
+      track = room.queue.find((t) => !t.played && t.youtubeVideoId === trackId);
     }
 
     if (!track) return res.status(404).json({ success: false, message: 'Track not found in queue' });

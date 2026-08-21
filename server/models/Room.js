@@ -1,37 +1,30 @@
 import mongoose from 'mongoose';
 
 const trackSchema = new mongoose.Schema({
-  spotifyTrackId: {
+  youtubeVideoId: {
     type: String,
     required: true
   },
-  name: {
+  title: {
     type: String,
     required: true
   },
-  artist: {
+  channelTitle: {
     type: String,
     required: true
   },
-  albumArt: {
+  thumbnailUrl: {
     type: String,
     default: ''
   },
-  albumName: {
-    type: String,
-    default: ''
+  durationSec: {
+    type: Number,
+    required: true,
+    default: 0
   },
   durationMs: {
     type: Number,
-    required: true
-  },
-  uri: {
-    type: String,
-    required: true
-  },
-  previewUrl: {
-    type: String,
-    default: null
+    default: 0
   },
   addedBy: {
     userId: {
@@ -72,20 +65,19 @@ const trackSchema = new mongoose.Schema({
 });
 
 const currentTrackSchema = new mongoose.Schema({
-  spotifyTrackId: { type: String, default: null },
-  name: { type: String, default: null },
-  artist: { type: String, default: null },
-  albumArt: { type: String, default: '' },
-  albumName: { type: String, default: '' },
+  youtubeVideoId: { type: String, default: null },
+  title: { type: String, default: null },
+  channelTitle: { type: String, default: null },
+  thumbnailUrl: { type: String, default: '' },
+  durationSec: { type: Number, default: 0 },
   durationMs: { type: Number, default: 0 },
-  uri: { type: String, default: null },
-  previewUrl: { type: String, default: null },
   addedBy: {
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     name: { type: String, default: '' }
   },
   startedAt: { type: Date, default: null },
   isPlaying: { type: Boolean, default: false },
+  progressSec: { type: Number, default: 0 },
   progressMs: { type: Number, default: 0 },
   lastSyncedAt: { type: Date, default: Date.now }
 });
@@ -155,14 +147,6 @@ const roomSchema = new mongoose.Schema(
         type: Boolean,
         default: true
       }
-    },
-    activeDeviceId: {
-      type: String,
-      default: null
-    },
-    activeDeviceName: {
-      type: String,
-      default: null
     }
   },
   {

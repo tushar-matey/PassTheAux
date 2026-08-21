@@ -1,7 +1,7 @@
-import spotifyService from '../services/spotifyService.js';
+import youtubeService from '../services/youtubeService.js';
 import Room from '../models/Room.js';
 
-// @desc    Search Spotify tracks with live queue-matching
+// @desc    Search YouTube videos/tracks with live queue-matching
 // @route   GET /api/search?q=<query>&roomCode=<code>
 export const searchTracks = async (req, res) => {
   try {
@@ -11,8 +11,8 @@ export const searchTracks = async (req, res) => {
       return res.json({ success: true, tracks: [] });
     }
 
-    // Search Spotify with user or app credentials
-    const searchResults = await spotifyService.searchTracks(q, req.user);
+    // Search YouTube via YouTube Data API v3
+    const searchResults = await youtubeService.searchVideos(q.trim());
 
     // If roomCode is provided, enrich search results with current room queue status
     if (roomCode) {
@@ -23,12 +23,12 @@ export const searchTracks = async (req, res) => {
 
         const enrichedTracks = searchResults.map((track) => {
           const queuedTrack = activeQueue.find(
-            (qt) => qt.spotifyTrackId === track.spotifyTrackId
+            (qt) => qt.youtubeVideoId === track.youtubeVideoId
           );
 
           const isCurrentTrack =
             room.currentTrack &&
-            room.currentTrack.spotifyTrackId === track.spotifyTrackId;
+            room.currentTrack.youtubeVideoId === track.youtubeVideoId;
 
           if (queuedTrack) {
             const userVoted = currentUserId
@@ -70,7 +70,8 @@ export const searchTracks = async (req, res) => {
         ...t,
         inQueue: false,
         userVoted: false,
-        votesCount: 0
+        votesCount: 0,
+        isNowPlaying: false
       }))
     });
   } catch (error) {
