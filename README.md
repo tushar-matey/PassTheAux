@@ -168,6 +168,28 @@ npm run test-youtube --prefix server
 2. Notice that both windows update **instantaneously in real-time** via Socket.IO.
 3. Toggle Play/Pause or Skip in the host window, and verify both YouTube players stay in sync!
 
+## 📝 Resume Highlights
+
+If you'd like to include this project on your resume, here is a pre-formatted LaTeX block:
+
+```latex
+\vspace{1pt}
+\noindent
+\textbf{PassTheAux -- Collaborative Music Voting Platform} \hfill \\
+\textit{Technologies: MERN Stack, React, Node.js, Express, MongoDB, Socket.IO, YouTube Data API v3, Tailwind CSS}
+\begin{itemize}[leftmargin=*, noitemsep, topsep=1pt, parsep=1pt]
+    \item Developed a real-time collaborative music queue application allowing multiple users to join shared rooms, search for YouTube tracks, and dynamically vote songs up the queue.
+    \item Engineered a real-time synchronization system using Socket.IO to broadcast queue updates, live vote counts, track transitions, and member activities across all connected clients.
+    \item Integrated the YouTube Data API v3 for catalog search and the YouTube IFrame Player API to embed synchronized, in-browser video playback without requiring third-party desktop apps.
+    \item Implemented automated synchronized playback where the host's video completion auto-advances the room to the next highest-voted track, with automated drift correction mechanisms.
+    \item Built a secure authentication system using JSON Web Tokens (JWT) and bcrypt for password hashing, enabling seamless sign-ups and session management.
+    \item Designed a responsive, modern UI with glassmorphic elements using React and Tailwind CSS, featuring collapsible video players and dynamic live voting counters.
+    \item Structured MongoDB collections for robust persistence of user profiles, room settings, and live queue states.
+\end{itemize}
+\vspace{3pt}
+\noindent
+```
+
 ---
 
 ## 📄 License
