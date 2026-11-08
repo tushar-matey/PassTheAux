@@ -80,7 +80,15 @@ app.use((err, req, res, next) => {
 
 // Database Connection & Server Launch
 const PORT = process.env.PORT || 5000;
-const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/passtheaux';
+let MONGO_URI = (process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/passtheaux').trim();
+
+// Strip surrounding quotes if passed via docker --env-file or CLI
+if (
+  (MONGO_URI.startsWith('"') && MONGO_URI.endsWith('"')) ||
+  (MONGO_URI.startsWith("'") && MONGO_URI.endsWith("'"))
+) {
+  MONGO_URI = MONGO_URI.slice(1, -1).trim();
+}
 
 mongoose
   .connect(MONGO_URI)

@@ -38,8 +38,11 @@
 
 ## 🚀 Quick Start Guide
 
+You can run PassTheAux either with **Node.js (Development)** or **Docker (Production)**.
+
 ### Prerequisites
-- [Node.js](https://nodejs.org/) (v18+ recommended)
+- [Node.js](https://nodejs.org/) (v18+ recommended) — *for local development*
+- [Docker](https://www.docker.com/) — *for containerized deployment*
 - [MongoDB](https://www.mongodb.com/) (running locally on `mongodb://localhost:27017` or a MongoDB Atlas URI)
 - Google Cloud API Key (for YouTube Data API v3) — *Note: PassTheAux includes a curated fallback catalog so the app also runs immediately without an API key!*
 
@@ -52,6 +55,8 @@ From the root directory:
 # Install root, server, and client dependencies in one command
 npm run install-all
 ```
+
+> **Docker users**: You can skip this step — dependencies are installed automatically during the Docker build.
 
 ---
 
@@ -76,6 +81,12 @@ JWT_EXPIRES_IN=7d
 YOUTUBE_API_KEY=your_youtube_api_key_here
 ```
 
+> **⚠️ Important for Docker**: Do **not** wrap values in quotes in the `.env` file. Docker's `--env-file` passes quote characters literally, which will break the MongoDB connection string.
+>
+> ✅ `MONGO_URI=mongodb+srv://user:pass@host/db`
+>
+> ❌ `MONGO_URI="mongodb+srv://user:pass@host/db"`
+
 ---
 
 ### Step 3: Getting a YouTube Data API v3 Key
@@ -92,6 +103,8 @@ YOUTUBE_API_KEY=your_youtube_api_key_here
 
 ### Step 4: Run the Application
 
+#### Option A — Node.js (Development)
+
 Start both the backend server and frontend client concurrently:
 
 ```bash
@@ -99,6 +112,56 @@ npm run dev
 ```
 
 - **Client App**: [http://localhost:5173](http://localhost:5173)
+- **Backend API**: [http://localhost:5000](http://localhost:5000)
+- **API Health Check**: [http://localhost:5000/api/health](http://localhost:5000/api/health)
+
+#### Option B — Docker (Production)
+
+Pull the pre-built image from Docker Hub or build locally, then run:
+
+```bash
+# Option 1 — Pull the published image
+docker pull tusharmatey/passtheaux:1.0
+
+# Option 2 — Build the image yourself from the server directory
+docker build -t tusharmatey/passtheaux:1.0 ./server
+
+# Run the container with your environment file
+docker run -d \
+  --name passtheaux \
+  --restart unless-stopped \
+  -p 5000:5000 \
+  --env-file ./server/.env \
+  tusharmatey/passtheaux:1.0
+```
+
+```powershell
+# PowerShell equivalent
+docker run -d `
+  --name passtheaux `
+  --restart unless-stopped `
+  -p 5000:5000 `
+  --env-file ./server/.env `
+  tusharmatey/passtheaux:1.0
+```
+
+Verify the container is healthy:
+```bash
+# Check logs
+docker logs passtheaux
+
+# Hit the health endpoint
+curl http://localhost:5000/api/health
+```
+
+Common Docker management commands:
+```bash
+docker stop passtheaux        # Stop the container
+docker start passtheaux       # Restart an existing container
+docker rm -f passtheaux       # Remove and recreate from scratch
+docker logs -f passtheaux     # Follow live logs
+```
+
 - **Backend API**: [http://localhost:5000](http://localhost:5000)
 - **API Health Check**: [http://localhost:5000/api/health](http://localhost:5000/api/health)
 
@@ -168,29 +231,5 @@ npm run test-youtube --prefix server
 2. Notice that both windows update **instantaneously in real-time** via Socket.IO.
 3. Toggle Play/Pause or Skip in the host window, and verify both YouTube players stay in sync!
 
-## 📝 Resume Highlights
 
-If you'd like to include this project on your resume, here is a pre-formatted LaTeX block:
 
-```latex
-\vspace{1pt}
-\noindent
-\textbf{PassTheAux -- Collaborative Music Voting Platform} \hfill \\
-\textit{Technologies: MERN Stack, React, Node.js, Express, MongoDB, Socket.IO, YouTube Data API v3, Tailwind CSS}
-\begin{itemize}[leftmargin=*, noitemsep, topsep=1pt, parsep=1pt]
-    \item Developed a real-time collaborative music queue application allowing multiple users to join shared rooms, search for YouTube tracks, and dynamically vote songs up the queue.
-    \item Engineered a real-time synchronization system using Socket.IO to broadcast queue updates, live vote counts, track transitions, and member activities across all connected clients.
-    \item Integrated the YouTube Data API v3 for catalog search and the YouTube IFrame Player API to embed synchronized, in-browser video playback without requiring third-party desktop apps.
-    \item Implemented automated synchronized playback where the host's video completion auto-advances the room to the next highest-voted track, with automated drift correction mechanisms.
-    \item Built a secure authentication system using JSON Web Tokens (JWT) and bcrypt for password hashing, enabling seamless sign-ups and session management.
-    \item Designed a responsive, modern UI with glassmorphic elements using React and Tailwind CSS, featuring collapsible video players and dynamic live voting counters.
-    \item Structured MongoDB collections for robust persistence of user profiles, room settings, and live queue states.
-\end{itemize}
-\vspace{3pt}
-\noindent
-```
-
----
-
-## 📄 License
-MIT License. Built with ❤️ for music lovers.
