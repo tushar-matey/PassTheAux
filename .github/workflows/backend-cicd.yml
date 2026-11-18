@@ -152,7 +152,12 @@ jobs:
           IMAGE: docker.io/${{ secrets.DOCKERHUB_USERNAME || vars.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
         run: |
           curl --fail-with-body --silent --show-error \
+            --http1.1 \
+            --header "Connection: close" \
+            --max-time 30 \
             --request POST \
             --get \
             --data-urlencode "imgURL=${IMAGE}" \
             "${RENDER_DEPLOY_HOOK_URL}"
+          echo ""
+          echo "Render deployment successfully triggered!"
