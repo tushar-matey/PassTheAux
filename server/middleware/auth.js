@@ -49,13 +49,13 @@ export const optionalAuth = async (req, res, next) => {
     req.headers.authorization.startsWith('Bearer')
   ) {
     try {
-      token = req.headers.authorization.split(' ')[1];
+      const token = req.headers.authorization.split(' ')[1];
       const decoded = jwt.verify(
         token,
         process.env.JWT_SECRET || 'passtheaux_dev_secret_key_2026_super_secure'
       );
       req.user = await User.findById(decoded.id);
-    } catch (error) {
+    } catch {
       // Allow request to continue even if token is invalid
       req.user = null;
     }

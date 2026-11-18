@@ -1,6 +1,4 @@
 import Room from '../models/Room.js';
-import User from '../models/User.js';
-import socketService from '../services/socketService.js';
 
 // Helper to generate unique 6-character uppercase room code
 const generateRoomCode = () => {

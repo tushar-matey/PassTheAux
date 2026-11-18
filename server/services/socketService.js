@@ -1,6 +1,5 @@
 import { Server } from 'socket.io';
 import Room from '../models/Room.js';
-import User from '../models/User.js';
 import playbackService from './playbackService.js';
 
 class SocketService {
@@ -156,7 +155,7 @@ class SocketService {
     console.log('[Socket] Socket.IO server initialized with YouTube playback sync');
   }
 
-  async handleUserLeave(roomCode, userId, socketId) {
+  async handleUserLeave(roomCode, userId, _socketId) {
     try {
       const room = await Room.findOne({ code: roomCode });
       if (!room) return;

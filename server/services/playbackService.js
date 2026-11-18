@@ -1,5 +1,4 @@
 import Room from '../models/Room.js';
-import User from '../models/User.js';
 import socketService from './socketService.js';
 
 class PlaybackService {
@@ -56,7 +55,7 @@ class PlaybackService {
   }
 
   // Play next track from the queue
-  async playNextTrack(roomCode, hostUser = null) {
+  async playNextTrack(roomCode, _hostUser = null) {
     try {
       const room = await Room.findOne({ code: roomCode.toUpperCase() }).populate('hostUserId');
       if (!room) return null;

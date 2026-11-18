@@ -136,7 +136,7 @@ class YouTubeService {
       let searchRes;
       try {
         searchRes = await axios.get(searchUrl);
-      } catch (catErr) {
+      } catch {
         // If category filter returns no results or is restricted, retry without category filter
         searchUrl = `${this.baseUrl}/search?part=snippet&type=video&maxResults=${maxResults}&q=${encodeURIComponent(
           query
