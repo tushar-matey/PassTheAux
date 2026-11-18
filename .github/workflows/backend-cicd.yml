@@ -151,7 +151,7 @@ jobs:
           RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
           IMAGE: docker.io/${{ secrets.DOCKERHUB_USERNAME || vars.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
         run: |
-          curl --fail --silent --show-error \
+          curl --fail-with-body --silent --show-error \
             --request POST \
             --get \
             --data-urlencode "imgURL=${IMAGE}" \
