@@ -23,7 +23,7 @@ concurrency:
 
 env:
   NODE_VERSION: "22"
-  IMAGE_NAME: passtheaux-server
+  IMAGE_NAME: passtheaux
 
 jobs:
 
