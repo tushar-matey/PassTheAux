@@ -90,22 +90,24 @@ if (
   MONGO_URI = MONGO_URI.slice(1, -1).trim();
 }
 
-mongoose
-  .connect(MONGO_URI)
-  .then(() => {
-    console.log(`[Database] MongoDB connected successfully to ${MONGO_URI}`);
+if (process.env.NODE_ENV !== 'test') {
+  mongoose
+    .connect(MONGO_URI)
+    .then(() => {
+      console.log(`[Database] MongoDB connected successfully to ${MONGO_URI}`);
 
-    // Start background playback loop monitor
-    playbackService.startMonitor();
+      // Start background playback loop monitor
+      playbackService.startMonitor();
 
-    httpServer.listen(PORT, () => {
-      console.log(`🚀 [PassTheAux Server] Running on http://localhost:${PORT}`);
-      console.log(`📡 [Socket.IO] Ready for real-time room connections`);
+      httpServer.listen(PORT, () => {
+        console.log(`🚀 [PassTheAux Server] Running on http://localhost:${PORT}`);
+        console.log(`📡 [Socket.IO] Ready for real-time room connections`);
+      });
+    })
+    .catch((err) => {
+      console.error('[Database] MongoDB connection failure:', err.message);
+      process.exit(1);
     });
-  })
-  .catch((err) => {
-    console.error('[Database] MongoDB connection failure:', err.message);
-    process.exit(1);
-  });
+}
 
 export default app;

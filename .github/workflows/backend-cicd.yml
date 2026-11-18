@@ -54,28 +54,10 @@ jobs:
         run: npm ci
 
       - name: Run lint
-        run: |
-          if jq -e '.scripts.lint' package.json > /dev/null 2>&1; then
-            npm run lint
-          else
-            echo "::warning::No 'lint' script in package.json — step skipped"
-          fi
+        run: npm run lint
 
       - name: Run tests
-        run: |
-          if jq -e '.scripts.test' package.json > /dev/null 2>&1; then
-            npm test
-          else
-            echo "::warning::No 'test' script in package.json — step skipped"
-          fi
-
-      - name: Build backend
-        run: |
-          if jq -e '.scripts.build' package.json > /dev/null 2>&1; then
-            npm run build
-          else
-            echo "::warning::No 'build' script in package.json — step skipped (plain Express server needs no build)"
-          fi
+        run: npm test
 
   # ───────────────────────────────────────────
   # JOB 2 — Build Docker image and deploy
